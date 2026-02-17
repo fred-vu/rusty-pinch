@@ -52,11 +52,8 @@ docker compose -f docker-compose.rpi.yml up -d rusty-pinch-whatsapp
 
 Optional overrides:
 
-- `RUSTY_PINCH_DOCKER_PLATFORM=linux/arm64` (default)
 - `RUSTY_PINCH_HOST_STATE_DIR=/opt/rusty-pinch/state` (host persistence root)
 - `RUSTY_PINCH_IMAGE=rusty-pinch:pi-local`
-
-If your Pi is 32-bit (`armv7`), set `RUSTY_PINCH_DOCKER_PLATFORM=linux/arm/v7` before running compose.
 
 ## Logs and health
 

@@ -1,8 +1,7 @@
-version: "3.9"
+version: "3.3"
 
 services:
   rusty-pinch-telegram:
-    platform: ${RUSTY_PINCH_DOCKER_PLATFORM:-linux/arm64}
     build:
       context: ../../..
       dockerfile: rusty-pinch/deploy/container/Dockerfile
@@ -10,7 +9,6 @@ services:
     env_file:
       - ./rusty-pinch.rpi.env
     command: ["channels", "telegram"]
-    init: true
     volumes:
       - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/data:/var/lib/rusty-pinch/data
       - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/workspace:/var/lib/rusty-pinch/workspace
@@ -19,7 +17,6 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
-      start_period: 30s
     logging:
       driver: json-file
       options:
@@ -28,7 +25,6 @@ services:
     restart: unless-stopped
 
   rusty-pinch-whatsapp:
-    platform: ${RUSTY_PINCH_DOCKER_PLATFORM:-linux/arm64}
     build:
       context: ../../..
       dockerfile: rusty-pinch/deploy/container/Dockerfile
@@ -36,7 +32,6 @@ services:
     env_file:
       - ./rusty-pinch.rpi.env
     command: ["channels", "whatsapp"]
-    init: true
     volumes:
       - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/data:/var/lib/rusty-pinch/data
       - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/workspace:/var/lib/rusty-pinch/workspace
@@ -45,7 +40,6 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
-      start_period: 30s
     logging:
       driver: json-file
       options:
