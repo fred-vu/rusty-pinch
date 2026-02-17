@@ -1,0 +1,24 @@
+[Unit]
+Description=Rusty Pinch WhatsApp Bridge Worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rusty-pinch
+Group=rusty-pinch
+WorkingDirectory=/opt/rusty-pinch
+EnvironmentFile=/etc/rusty-pinch/rusty-pinch.env
+ExecStart=/opt/rusty-pinch/rusty-pinch channels whatsapp
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/rusty-pinch
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

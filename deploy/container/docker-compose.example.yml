@@ -1,0 +1,29 @@
+services:
+  rusty-pinch-telegram:
+    build:
+      context: ../../..
+      dockerfile: rusty-pinch/deploy/container/Dockerfile
+    env_file:
+      - ./rusty-pinch.env
+    command: ["channels", "telegram"]
+    volumes:
+      - rusty_pinch_data:/var/lib/rusty-pinch/data
+      - rusty_pinch_workspace:/var/lib/rusty-pinch/workspace
+    restart: unless-stopped
+
+  rusty-pinch-whatsapp:
+    build:
+      context: ../../..
+      dockerfile: rusty-pinch/deploy/container/Dockerfile
+    env_file:
+      - ./rusty-pinch.env
+    command: ["channels", "whatsapp"]
+    volumes:
+      - rusty_pinch_data:/var/lib/rusty-pinch/data
+      - rusty_pinch_workspace:/var/lib/rusty-pinch/workspace
+    restart: unless-stopped
+    profiles: ["whatsapp"]
+
+volumes:
+  rusty_pinch_data:
+  rusty_pinch_workspace:

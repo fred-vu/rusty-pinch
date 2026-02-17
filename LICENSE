@@ -1,0 +1,36 @@
+Rusty Pinch Personal Use License v1.0
+
+Copyright (c) Rusty Pinch contributors
+
+This license governs use of the source code in this repository.
+
+1. Grant of Rights
+You are permitted to use, copy, modify, and run this software only for personal, non-commercial purposes by a natural person.
+
+2. Contribution and Forking
+You may fork this repository and submit pull requests for contribution. Public forks for collaboration are allowed, provided this license and notices remain intact.
+
+3. Restrictions
+You may not, without prior written permission from the copyright holder:
+- use this software for commercial activity;
+- use this software for internal business, enterprise, or organizational operations;
+- provide this software (or a modified version) as a hosted or managed service;
+- sell, sublicense, lease, or otherwise monetize this software;
+- redistribute modified or unmodified versions outside personal use and contribution workflows.
+
+4. Ownership
+All intellectual property rights remain with the copyright holder and contributors. This license grants limited permission to use the software; it does not transfer ownership.
+
+5. Trademarks
+This license does not grant rights to use project names, logos, or branding except for accurate attribution.
+
+6. Termination
+Any use outside these terms immediately terminates your rights under this license.
+
+7. Disclaimer of Warranty
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+8. Limitation of Liability
+IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT, OR OTHERWISE, ARISING FROM OR IN CONNECTION WITH THE SOFTWARE OR USE OF THE SOFTWARE.
+
+This is a source-available license and is not an OSI-approved open-source license.

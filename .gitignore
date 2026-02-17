@@ -1,0 +1,9 @@
+/target
+/data
+/workspace
+.env
+.env.local
+deploy/container/rusty-pinch.env
+deploy/container/rusty-pinch.rpi.env
+deploy/container/state/
+/docs/runbook-raspberry-pi.md
