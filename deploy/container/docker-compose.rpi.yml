@@ -1,4 +1,4 @@
-name: rusty-pinch-pi
+version: "3.9"
 
 services:
   rusty-pinch-telegram:
@@ -52,4 +52,3 @@ services:
         max-size: "10m"
         max-file: "5"
     restart: unless-stopped
-    profiles: ["whatsapp"]

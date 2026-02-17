@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   rusty-pinch-telegram:
     build:
@@ -22,7 +24,6 @@ services:
       - rusty_pinch_data:/var/lib/rusty-pinch/data
       - rusty_pinch_workspace:/var/lib/rusty-pinch/workspace
     restart: unless-stopped
-    profiles: ["whatsapp"]
 
 volumes:
   rusty_pinch_data:

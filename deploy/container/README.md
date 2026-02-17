@@ -10,6 +10,8 @@
 
 ## Quick start
 
+Use `docker compose` (v2). If your host only has legacy `docker-compose` (v1), replace `docker compose` with `docker-compose` in all commands below.
+
 ```bash
 cd rusty-pinch/deploy/container
 cp rusty-pinch.env.example rusty-pinch.env
@@ -21,7 +23,7 @@ docker compose -f docker-compose.example.yml up -d rusty-pinch-telegram
 Enable WhatsApp worker (community test mode):
 
 ```bash
-docker compose -f docker-compose.example.yml --profile whatsapp up -d rusty-pinch-whatsapp
+docker compose -f docker-compose.example.yml up -d rusty-pinch-whatsapp
 ```
 
 ## Raspberry Pi quick start (recommended)
@@ -45,7 +47,7 @@ docker compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
 Enable WhatsApp worker (community test mode):
 
 ```bash
-docker compose -f docker-compose.rpi.yml --profile whatsapp up -d rusty-pinch-whatsapp
+docker compose -f docker-compose.rpi.yml up -d rusty-pinch-whatsapp
 ```
 
 Optional overrides:
