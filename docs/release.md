@@ -66,7 +66,7 @@ Suggested first-run on Pi host:
 cd deploy/container
 cp rusty-pinch.rpi.env.example rusty-pinch.rpi.env
 mkdir -p ./state/data ./state/workspace
-docker compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
+docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
 ```
 
 ## CI release flow

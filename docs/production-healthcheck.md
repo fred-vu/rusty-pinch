@@ -55,8 +55,9 @@ rusty-pinch channels whatsapp --max-messages 1
 
 Every 2-4 hours:
 
-- `docker compose -f docker-compose.rpi.yml ps`
-- `docker compose -f docker-compose.rpi.yml logs --since 2h rusty-pinch-telegram`
+- `docker-compose -f docker-compose.rpi.yml ps`
+- `docker-compose -f docker-compose.rpi.yml logs --since 2h rusty-pinch-telegram`
+- `docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once`
 - `docker stats --no-stream`
 - `df -h`
 - `free -h`
@@ -72,6 +73,7 @@ Expected:
 
 1. Auth/provider issues:
 - verify env keys and `doctor` output.
+- if logs show `Failed to authenticate request with Clerk`, verify key source and remove stale generic override keys (`RUSTY_PINCH_API_KEY`) before recreating the worker.
 
 2. Worker stops/restarts frequently:
 - inspect logs for `channel_send_error`, `channel_parse_error`, provider failures.

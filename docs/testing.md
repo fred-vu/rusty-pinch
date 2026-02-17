@@ -103,7 +103,15 @@ make rusty-pinch-deploy-check
 ```bash
 cd deploy/container
 cp rusty-pinch.rpi.env.example rusty-pinch.rpi.env
-docker compose -f docker-compose.rpi.yml config >/dev/null
+docker-compose -f docker-compose.rpi.yml config >/dev/null
+```
+
+9.5 (Optional) Validate monitor command in compose runtime
+
+```bash
+cd deploy/container
+docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once
 ```
 
 10. Validate channel env contract and parser coverage
@@ -173,6 +181,7 @@ RUSTY_PINCH_REQUEST_RETRIES=2
 - each `run`/`tools run` turn prints one JSON log event with `event=turn` and `request_id`.
 - `stats` includes persisted `telemetry.total_turns` and `last_turn` after process restart.
 - `monitor --once` prints app/process/host/storage blocks without error.
+- compose monitor command works against running container (`exec ... rusty-pinch monitor --once`).
 - package build command emits `.tar.gz` and `.sha256` artifact pair.
 - package verification command validates checksum + extracted contents + packaged binary smoke.
 - deploy profile check validates systemd/container artifacts and healthcheck docs.

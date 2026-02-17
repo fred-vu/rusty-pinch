@@ -200,6 +200,21 @@ Deployment profile artifacts:
 - Raspberry Pi compose profile: `rusty-pinch/deploy/container/docker-compose.rpi.yml`
 - production health checklist: `rusty-pinch/docs/production-healthcheck.md`
 
+Raspberry Pi compose monitor commands:
+
+```bash
+cd rusty-pinch/deploy/container
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --pid 1 --interval-ms 1000
+```
+
+If turn logs show `Failed to authenticate request with Clerk`, review key envs in
+`rusty-pinch.rpi.env` and recreate the worker:
+
+```bash
+docker-compose -f docker-compose.rpi.yml up -d --force-recreate rusty-pinch-telegram
+```
+
 Artifacts:
 
 - `rusty-pinch-<version>-<os>-<arch>.tar.gz`

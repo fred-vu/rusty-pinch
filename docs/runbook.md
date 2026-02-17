@@ -75,7 +75,15 @@ Raspberry Pi container profile quick start:
 cd rusty-pinch/deploy/container
 cp rusty-pinch.rpi.env.example rusty-pinch.rpi.env
 mkdir -p ./state/data ./state/workspace
-docker compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
+docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
+```
+
+Raspberry Pi monitor via compose:
+
+```bash
+cd rusty-pinch/deploy/container
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --pid 1 --interval-ms 1000
 ```
 
 ## Health signals
@@ -106,6 +114,10 @@ docker compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
    - verify bridge service is reachable from runtime host.
 7. Need controlled first-run validation:
    - use `--max-messages 1` to validate one inbound/outbound cycle and auto-exit.
+8. OpenRouter auth failure (`Failed to authenticate request with Clerk`):
+   - verify key source in env (`RUSTY_PINCH_OPENROUTER_API_KEY` preferred; avoid stale `RUSTY_PINCH_API_KEY` override).
+   - verify `RUSTY_PINCH_PROVIDER=openrouter` and `api_base=https://openrouter.ai/api/v1` in `doctor`.
+   - recreate compose worker after key changes: `docker-compose -f docker-compose.rpi.yml up -d --force-recreate rusty-pinch-telegram`.
 
 ## Backup and cleanup
 
