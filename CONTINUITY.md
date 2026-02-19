@@ -1,0 +1,784 @@
+Goal (incl. success criteria):
+- Implement the AI foundation described in `docs/production_development_plan AI System Foundation for Rusty Pinch.md` with dependency order:
+  1) Codex CLI wrapper + account/rate-limit queue
+  2) Rhai `SkillManager` + sandboxed execution
+  3) Scheduler/OODA loop + human approval gate
+  4) Self-evolution flow and safe self-update scaffolding
+  5) CI/CD + monitoring hardening
+- Success criteria: production-ready foundation modules exist in codebase with tests and docs, and compile/test passes.
+
+Constraints/Assumptions:
+- User explicitly approved immediate implementation in day/session cadence (not week planning).
+- Repository instruction requires a continuity ledger at `CONTINUITY.md` with this format.
+
+Key decisions:
+- Execute delivery order agreed by user; implement concrete modules now rather than only roadmap text.
+
+State:
+- Active
+
+Done:
+- Confirmed `CONTINUITY.md` was missing.
+- Located target document at `docs/production_development_plan AI System Foundation for Rusty Pinch.md`.
+- Read and extracted all six phases from `docs/production_development_plan AI System Foundation for Rusty Pinch.md`.
+- Assessed current baseline:
+  - Present: core runtime app, session store, provider layer, channel adapters, tool registry, telemetry/monitoring docs and code.
+  - Missing vs plan: Codex CLI wrapper/account pool, Rhai runtime + `SkillManager`, scheduler/OODA loop, self-evolution/self-update pipeline, CI workflows in this repo.
+- User approved immediate execution of the delivery order.
+- Implemented `src/codex.rs` (Codex CLI wrapper foundation):
+  - account pool + round-robin selection
+  - rate-window usage tracking
+  - queue activation when remaining quota <= threshold (default 25%)
+  - queue drain + health check primitives
+  - app/CLI integration via `codex` commands (`status`, `healthcheck`, `generate`, `drain-one`)
+- Extended configuration and doctor output for Codex env contract in `src/config.rs`, `src/main.rs`, `.env.example`.
+- Implemented `src/skills.rs` (Rhai hands layer):
+  - `SkillManager` list/dry-run/run/write
+  - sandbox limits and safe host functions (`log_info`, `time_now`, `http_get`, `http_post`)
+  - blocked localhost/private-network URL policy
+  - app/CLI integration via `skills` commands (`list`, `dry-run`, `run`)
+- Implemented `src/pulse.rs` (scheduler + OODA + human approval + goals):
+  - interval scheduler with default jobs
+  - OODA cycle report and risk classification
+  - pending approval tokens with approve/reject flow
+  - goal tracking and mark-achieved behavior
+  - app/CLI integration via `pulse` commands (`status`, `tick`, `ooda`, `goal`, `approve`, `reject`)
+- Implemented `src/evolution.rs` (self-evolution/update scaffolding):
+  - Codex-generated skill stage/validate/promote flow
+  - blue/green update planning + staged manifest writer
+  - app/CLI integration via `evolution` commands (`generate-skill`, `stage-update`)
+- Added CI workflow: `.github/workflows/ci.yml` (fmt/build/test).
+- Updated docs (`README.md`, `docs/architecture.md`) for new foundation modules and commands.
+- Added/updated tests; full suite passing after changes.
+- Validation command outcomes:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`35` unit tests + integration tests all green)
+- Implemented Pulse persistence across restarts:
+  - `PulseRuntime::load_persistent_state` and `PulseRuntime::persist_persistent_state` in `src/pulse.rs`
+  - Stores pending approvals and goals in `${RUSTY_PINCH_WORKSPACE}/pulse/state.json`
+  - Wired app lifecycle + mutation points (`add_goal`, `ooda`, `approve`, `reject`) to persist in `src/app.rs`
+  - Added persistence tests in `src/pulse.rs` and `tests/pulse_persistence.rs`
+- Implemented blue/green apply + post-stage health check + automatic rollback:
+  - Added staged manifest model and apply flow in `src/evolution.rs`
+  - New `apply_staged_update` switches active slot, runs health check on passive binary, rolls back on failure, and updates manifest status
+  - Added CLI command `evolution apply-staged-update --healthcheck-args ...` in `src/main.rs`
+  - Added unit tests for success and rollback paths in `src/evolution.rs`
+- Updated docs to include apply command and persistence/rollback architecture notes (`README.md`, `docs/architecture.md`).
+- Re-ran validation after follow-up changes:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`38` unit tests + integration tests all green)
+- Implemented scheduler job persistence/state replay in Pulse:
+  - Persistent state now includes `jobs` snapshots (runs/status/next_due metadata)
+  - `load_persistent_state` replays persisted job runtime counters into registered jobs
+  - Added replay test: `pulse::tests::persistence_replays_job_runtime_counters`
+- Implemented Codex health metrics export in telemetry:
+  - Added `codex` telemetry snapshot section with account health + queue metrics in `src/telemetry.rs`
+  - `stats_json` now includes `telemetry.codex`
+  - Codex operations and Pulse Codex actions now refresh Codex telemetry snapshot
+  - Added telemetry test: `telemetry::tests::record_codex_status_persists_snapshot`
+- Implemented rollout health-check timeout/kill policy:
+  - `evolution apply-staged-update` now supports timeout seconds
+  - Health-check runner uses supervised process loop with forced kill on timeout
+  - Apply report/manifest include timeout/timed_out metadata
+  - Added timeout rollback test: `evolution::tests::apply_staged_update_times_out_and_rolls_back`
+- Updated CLI/docs for timeout argument and behavior.
+- Validation command outcomes after new hardening:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`41` unit tests + integration tests all green)
+- Implemented Pulse auto-allow policy as requested:
+  - Added `RUSTY_PINCH_PULSE_AUTO_ALLOW_ACTIONS` policy in config (`src/config.rs`)
+  - Default policy now auto-allows keywords: `deploy,restart,email,purchase,self-update`
+  - Wired runtime via `PulseRuntime::with_auto_allow_actions(...)` in app startup (`src/app.rs`)
+  - OODA approval gate now bypasses human approval for matched actions in `src/pulse.rs`
+  - Added test: `pulse::tests::auto_allow_skips_human_approval_for_matched_action`
+- Updated doctor output with `pulse_auto_allow_actions_count` and docs/env references (`src/main.rs`, `.env.example`, `README.md`, `docs/architecture.md`).
+- Updated test env reset lists to include `RUSTY_PINCH_PULSE_AUTO_ALLOW_ACTIONS`.
+- Re-ran validation after auto-allow implementation:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`42` unit tests + integration tests all green)
+- Implemented Pulse external HTTP health-probe jobs:
+  - Added `PulseAction::HttpHealthCheck { url, expected_status, timeout_secs }` in `src/pulse.rs`
+  - Added runtime API `add_http_healthcheck_job(...)` with URL and status validation
+  - Added CLI commands:
+    - `pulse job list`
+    - `pulse job add-http-healthcheck --id ... --interval-secs ... --url ... --expected-status ... --timeout-secs ...`
+  - Added app wiring for job registration and execution via `pulse tick`
+- Added safety guardrails for health-probe URLs (block localhost/private-local patterns) in pulse runtime registration.
+- Updated docs for Pulse health-probe jobs (`README.md`, `docs/architecture.md`).
+- Added tests:
+  - `pulse::tests::add_http_healthcheck_job_registers_action`
+  - `pulse::tests::add_http_healthcheck_job_rejects_localhost`
+- Validation after this increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`44` unit tests + integration tests all green)
+- Resumed from compaction on user `continue`; reloaded ledger and inspected current Pulse/App/CLI state to finish lifecycle controls + restart restoration for custom jobs.
+- Implemented Pulse custom-job restart restoration:
+  - `PulseRuntime::load_persistent_state` now restores unknown persisted jobs by rebuilding specs from snapshots, then replaying runtime counters/timestamps.
+- Implemented Pulse job lifecycle controls in runtime/app/CLI:
+  - Runtime APIs: `remove_job`, `enable_job`, `disable_job` (`src/pulse.rs`)
+  - App APIs: `pulse_remove_job_json`, `pulse_enable_job_json`, `pulse_disable_job_json` (`src/app.rs`)
+  - CLI commands: `pulse job remove --id ...`, `pulse job enable --id ...`, `pulse job disable --id ...` (`src/main.rs`)
+- Hardened persistence behavior:
+  - `pulse tick` now persists pulse state after executing due jobs so runtime counters/status survive restarts.
+- Added tests:
+  - `pulse::tests::persistence_restores_unregistered_job_definitions`
+  - `pulse::tests::job_lifecycle_remove_enable_disable`
+  - `tests/pulse_persistence.rs::pulse_custom_jobs_persist_and_lifecycle_controls_work_across_restarts`
+- Updated docs (`README.md`, `docs/architecture.md`) for lifecycle commands and restart restoration behavior.
+- Validation after this increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`46` unit tests + integration tests all green)
+- Implemented telemetry coverage expansion for monitoring hardening:
+  - Added `pulse` telemetry snapshot (jobs enabled/disabled, pending approvals, goals achieved, last tick execution/error counts) in `src/telemetry.rs`.
+  - Added `evolution` telemetry snapshot (last skill promotion status + last blue/green apply/rollback healthcheck outcome) in `src/telemetry.rs`.
+  - Added telemetry record methods:
+    - `record_pulse_status`, `record_pulse_tick`
+    - `record_evolution_skill`, `record_evolution_apply`
+- Wired app lifecycle to persist telemetry snapshots:
+  - Seed pulse/codex telemetry during app startup.
+  - Pulse mutations persist state and refresh telemetry snapshot.
+  - Pulse `tick` records per-run executed/error job counters.
+  - Evolution skill generation/apply paths now record evolution telemetry snapshots.
+  - `stats_json` now includes `telemetry.pulse` and `telemetry.evolution`.
+- Enhanced monitor TUI app panel with subsystem lines:
+  - codex account/queue metrics
+  - pulse jobs/approvals/goals/last tick metrics
+  - evolution last skill/apply status and rollback/timeout flags
+- Added tests:
+  - `telemetry::tests::record_pulse_tick_persists_snapshot`
+  - `telemetry::tests::record_evolution_apply_persists_snapshot`
+  - `tests/observability.rs::stats_include_pulse_snapshot_metrics`
+- Updated architecture docs with subsystem telemetry details.
+- Validation after telemetry increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`48` unit tests + integration tests all green)
+- Implemented CI/CD release automation hardening:
+  - Added `.github/workflows/release.yml`:
+    - triggers on tag push `v*` and manual dispatch
+    - release gate job (`cargo fmt --check`, `cargo test --locked`)
+    - multi-platform release matrix builds:
+      - `x86_64-unknown-linux-gnu`
+      - `x86_64-apple-darwin`
+      - `x86_64-pc-windows-msvc`
+    - packages archives (`.tar.gz` for Unix, `.zip` for Windows)
+    - generates and uploads `SHA256SUMS.txt`
+    - publishes GitHub Release assets automatically on tag pushes
+- Extended CI trigger coverage:
+  - Updated `.github/workflows/ci.yml` to support manual `workflow_dispatch`.
+- Updated release/architecture/docs:
+  - `README.md` release section now documents CI vs release workflows and tag workflow.
+  - `docs/release.md` CI release flow updated to reflect current pipeline behavior.
+  - `docs/architecture.md` now includes a CI/CD Automation section.
+- Validation after CI/CD increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`48` unit tests + integration tests all green)
+- Implemented evolution apply confirmation guardrail:
+  - Added `EvolutionSettings` in `src/config.rs` with `RUSTY_PINCH_EVOLUTION_REQUIRE_APPLY_CONFIRM` (default `true`).
+  - `doctor` output now includes `evolution_require_apply_confirm`.
+  - `evolution apply-staged-update` CLI now supports `--confirm`.
+  - App-level apply path enforces policy and blocks apply unless confirmed when policy is enabled.
+- Added guardrail tests:
+  - `tests/evolution_guard.rs::evolution_apply_requires_confirmation_by_default`
+  - `tests/evolution_guard.rs::evolution_apply_can_skip_confirmation_when_policy_disabled`
+- Updated env contract/docs:
+  - `.env.example` includes `RUSTY_PINCH_EVOLUTION_REQUIRE_APPLY_CONFIRM=true`
+  - `README.md` command and env docs updated for `--confirm`/policy
+  - `docs/architecture.md` evolution section updated with apply confirmation guardrail
+- Updated test env resets across integration suites to include `RUSTY_PINCH_EVOLUTION_REQUIRE_APPLY_CONFIRM`.
+- Validation after evolution-guard increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`48` unit tests + integration tests all green)
+- Implemented staged artifact integrity verification guard for evolution apply:
+  - Added SHA-256 dependency (`sha2`) in `Cargo.toml`.
+  - `stage_blue_green_update` now computes and stores `passive_binary_sha256` in staged manifest.
+  - `apply_staged_update` now verifies the passive binary SHA-256 before active slot switch.
+  - On integrity failure, manifest is updated with `status=integrity_failed` and error detail, then apply aborts.
+- Added evolution integrity regression test:
+  - `evolution::tests::apply_staged_update_fails_on_checksum_mismatch`
+  - Verifies tampering is detected and active slot is not switched.
+- Updated docs:
+  - `README.md` evolution apply command description now includes checksum verification.
+  - `docs/architecture.md` evolution section now explicitly documents staged SHA-256 verification.
+- Validation after integrity increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`49` unit tests + integration tests all green)
+- Implemented staged manifest provenance/signature verification guard:
+  - Added HMAC dependency (`hmac`) in `Cargo.toml`.
+  - Evolution staged manifest now stores optional signature metadata:
+    - `manifest_signature`
+    - `manifest_signature_algorithm`
+  - `stage_blue_green_update` now optionally signs staged manifest when `RUSTY_PINCH_EVOLUTION_MANIFEST_SIGNING_KEY` is configured.
+  - `apply_staged_update` now verifies manifest signature before checksum/slot switch when key/policy is configured.
+  - On signature failure, manifest status is updated to `signature_failed` and apply aborts.
+- Extended evolution configuration/doctor contract:
+  - Added `RUSTY_PINCH_EVOLUTION_MANIFEST_SIGNING_KEY` and `RUSTY_PINCH_EVOLUTION_REQUIRE_MANIFEST_SIGNATURE`.
+  - `doctor` now reports:
+    - `evolution_manifest_signing_key_loaded`
+    - `evolution_require_manifest_signature`
+  - Added doctor warnings for missing required signing key and too-short signing key.
+- Added tests:
+  - `evolution::tests::apply_staged_update_fails_on_manifest_signature_mismatch`
+  - `tests/evolution_guard.rs::evolution_apply_requires_manifest_signature_policy_when_enabled`
+- Updated docs/env:
+  - `.env.example` signature policy vars
+  - `README.md` env contract additions
+  - `docs/architecture.md` evolution signature verification note
+- Updated integration test env reset lists to include new evolution signature env vars.
+- Validation after manifest-signature increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`50` unit tests + integration tests all green)
+- Implemented manifest signature key lifecycle/rotation hardening:
+  - Added evolution key config contract:
+    - `RUSTY_PINCH_EVOLUTION_MANIFEST_SIGNING_KEY_ID`
+    - `RUSTY_PINCH_EVOLUTION_MANIFEST_SIGNING_KEYS` (format: `id|key;id|key`)
+  - `load_evolution_settings` now builds verification keyring from keyring env plus active signing key (`RUSTY_PINCH_EVOLUTION_MANIFEST_SIGNING_KEY`), with id-aware upsert.
+  - Staged manifest now records `manifest_signature_key_id` and signs payload including key id.
+  - Apply path now verifies signature using configured keyring by manifest key id.
+  - Added compatibility fallback for legacy manifests without key id when exactly one verification key is configured.
+  - Doctor report now exposes:
+    - `evolution_manifest_signing_key_id`
+    - `evolution_manifest_signing_keys_count`
+  - Added doctor warnings for missing keyring under required-signature policy, duplicate key ids, short keys, and orphaned key-id config.
+- Added/updated tests for rotation-safe signature verification:
+  - `evolution::tests::apply_staged_update_uses_manifest_key_id_for_key_rotation`
+  - `evolution::tests::apply_staged_update_fails_when_manifest_key_id_not_in_keyring`
+  - `evolution::tests::apply_staged_update_accepts_legacy_unsigned_key_id_manifest_with_single_key`
+  - `tests/evolution_guard.rs::evolution_apply_supports_signature_key_rotation_policy`
+  - Updated env reset lists across integration tests for new evolution key vars.
+- Updated docs/env for key rotation contract:
+  - `.env.example` adds key id + keyring examples.
+  - `README.md` command/env docs updated for key-id-aware signature verification and keyring format.
+  - `docs/architecture.md` updated to document signature rotation support.
+- Validation after key-rotation increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`53` unit tests + integration tests all green)
+- Implemented artifact provenance/checksum trust policy for evolution stage:
+  - Added `RUSTY_PINCH_EVOLUTION_REQUIRE_STAGE_ARTIFACT_SHA256` in evolution settings/config.
+  - Added CLI support: `evolution stage-update --artifact-sha256 <sha256>`.
+  - App stage path now enforces policy guard when checksum is required.
+  - `stage_blue_green_update` now:
+    - computes artifact SHA-256 before staging,
+    - verifies against optional expected checksum,
+    - records artifact provenance in staged manifest:
+      - `artifact_binary_path`
+      - `artifact_binary_sha256`
+      - `artifact_checksum_verified`
+  - Doctor report now exposes `evolution_require_stage_artifact_sha256`.
+- Added tests for artifact checksum policy and provenance:
+  - `evolution::tests::stage_blue_green_update_fails_on_artifact_checksum_mismatch`
+  - `evolution::tests::stage_blue_green_update_records_artifact_checksum_verification`
+  - `tests/evolution_guard.rs::evolution_stage_update_requires_artifact_checksum_when_policy_enabled`
+  - Updated integration env reset lists across suites for `RUSTY_PINCH_EVOLUTION_REQUIRE_STAGE_ARTIFACT_SHA256`.
+- Updated docs/env for artifact checksum gate:
+  - `.env.example` adds `RUSTY_PINCH_EVOLUTION_REQUIRE_STAGE_ARTIFACT_SHA256`.
+  - `README.md` stage-update command/env contract includes `--artifact-sha256` and policy variable.
+  - `docs/architecture.md` evolution section includes stage-time artifact checksum gate.
+- Validation after artifact checksum policy increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`55` unit tests + integration tests all green)
+- Implemented apply-time staged artifact provenance trust policy:
+  - Added `RUSTY_PINCH_EVOLUTION_REQUIRE_VERIFIED_STAGE_ARTIFACT_SHA256` in config/env.
+  - Apply path now enforces provenance gate before signature/integrity checks when enabled:
+    - manifest must be marked `artifact_checksum_verified=true`
+    - manifest artifact path/checksum fields must be present and checksum format-valid
+    - if artifact file still exists, checksum is re-validated against recorded value
+  - On provenance failure, staged manifest status is set to `provenance_failed` and apply aborts.
+  - Doctor report now includes `evolution_require_verified_stage_artifact_sha256`.
+  - Added doctor warnings for risky/contradictory policy combinations:
+    - verified provenance required while stage checksum requirement disabled
+    - verified provenance required without required manifest signatures
+- Added tests:
+  - `evolution::tests::apply_staged_update_fails_when_verified_artifact_provenance_is_required`
+  - `tests/evolution_guard.rs::evolution_apply_requires_verified_stage_artifact_provenance_when_policy_enabled`
+  - Updated integration env reset lists for new policy env var.
+- Updated docs/env:
+  - `.env.example` adds `RUSTY_PINCH_EVOLUTION_REQUIRE_VERIFIED_STAGE_ARTIFACT_SHA256`.
+  - `README.md` env contract updated with apply-time provenance policy.
+  - `docs/architecture.md` evolution section updated with apply-time provenance enforcement.
+- Validation after apply-time provenance increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`56` unit tests + integration tests all green)
+- Hardened manifest signature tamper-evidence for artifact provenance fields:
+  - Current signature payload now includes:
+    - `artifact_binary_path`
+    - `artifact_binary_sha256`
+    - `artifact_checksum_verified`
+  - Verification supports compatibility fallback order:
+    1) current payload (with artifact fields + key id)
+    2) previous key-id payload (without artifact fields)
+    3) legacy payload (without key id)
+  - This preserves apply compatibility for already-staged manifests while protecting new provenance fields against manifest tampering when signature policy is enabled.
+- Added signature compatibility/tamper tests:
+  - `evolution::tests::apply_staged_update_fails_when_signed_artifact_provenance_fields_are_tampered`
+  - `evolution::tests::apply_staged_update_accepts_key_id_signature_without_artifact_payload_fields`
+- Updated architecture docs to note signature payload tamper-evidence includes artifact provenance fields.
+- Validation after signature tamper-evidence increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`58` unit tests + integration tests all green)
+- Implemented rollout audit trail hardening for evolution stage/apply:
+  - Added append-only audit log at `${RUSTY_PINCH_WORKSPACE}/updates/evolution-audit.jsonl`.
+  - Each audit record includes:
+    - timestamp/event/status
+    - manifest path, active/passive slots
+    - artifact provenance/signing key metadata
+    - apply rollback/healthcheck outcomes
+    - optional error message
+    - hash-chain fields (`prev_hash`, `hash`)
+  - Stage/apply paths now emit audit records for:
+    - stage success
+    - apply provenance/signature/integrity failures
+    - apply activation/rollback outcomes
+  - Hash is SHA-256 over canonicalized audit payload including `prev_hash`.
+  - Audit write errors are non-fatal to rollout flow and are surfaced as stderr event `evolution_audit_error`.
+- Added audit-trail tests:
+  - `evolution::tests::stage_blue_green_update_audit_log_has_hash_chain_across_entries`
+  - Extended `evolution::tests::stage_blue_green_update_records_artifact_checksum_verification` to assert audit record write.
+  - Extended `evolution::tests::apply_staged_update_fails_when_verified_artifact_provenance_is_required` to assert `apply/provenance_failed` audit event.
+- Updated docs for audit trail:
+  - `README.md` observability section includes evolution audit log path + hash-chain semantics.
+  - `docs/architecture.md` evolution section includes append-only rollout audit log behavior.
+- Validation after audit trail increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`59` unit tests + integration tests all green)
+- Implemented offline audit integrity verifier for evolution forensics:
+  - Added `EvolutionManager::verify_audit_log()` and `EvolutionAuditVerifyReport`.
+  - Verifier validates:
+    - JSON decode per log line
+    - record hash recomputation match
+    - `prev_hash` chain continuity across entries
+  - Added CLI command: `evolution audit-verify`.
+  - Added app API: `evolution_audit_verify_json`.
+  - Reused strict SHA-256 normalization for audit hash validation.
+- Added verifier tests:
+  - `evolution::tests::verify_audit_log_succeeds_for_valid_chain`
+  - `evolution::tests::verify_audit_log_fails_when_record_is_tampered`
+- Updated docs:
+  - `README.md` command list includes `evolution audit-verify`.
+  - `docs/architecture.md` evolution section documents offline verifier command.
+- Validation after audit verifier increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`61` unit tests + integration tests all green)
+- Implemented trusted checksum-manifest source verification for stage-time artifact checksums:
+  - Added evolution config/env `RUSTY_PINCH_EVOLUTION_TRUSTED_SHA256SUMS_SHA256` and doctor visibility/warning checks.
+  - Extended CLI stage command with:
+    - `--artifact-sha256-sums-file`
+    - `--artifact-sha256-entry`
+  - `evolution stage-update` now supports resolving artifact checksum from sha256sum-format manifest and optional trusted manifest hash pin.
+  - Added `EvolutionManager::resolve_artifact_sha256_from_sums(...)` with parser/match helpers and strict checksum normalization.
+  - Added/updated tests:
+    - `evolution::tests::resolve_artifact_sha256_from_sums_file`
+    - `evolution::tests::resolve_artifact_sha256_from_sums_rejects_untrusted_manifest_hash`
+    - `tests/evolution_guard.rs::evolution_stage_update_accepts_trusted_sha256sums_manifest`
+    - `tests/evolution_guard.rs::evolution_stage_update_rejects_untrusted_sha256sums_manifest`
+  - Updated docs/env:
+    - `.env.example`
+    - `README.md`
+    - `docs/architecture.md`
+    - `docs/release.md`
+- Validation after trusted checksum-manifest increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`63` unit tests + integration tests all green)
+- Implemented detached checksum-manifest signature verification for stage-time checksum resolution:
+  - Added evolution config/env:
+    - `RUSTY_PINCH_EVOLUTION_TRUSTED_SHA256SUMS_ED25519_PUBLIC_KEY`
+    - `RUSTY_PINCH_EVOLUTION_REQUIRE_SHA256SUMS_SIGNATURE`
+  - Added doctor report visibility and warnings for signature-policy/key-format contract.
+  - Extended CLI stage command with:
+    - `--artifact-sha256-sums-signature-file`
+  - `evolution stage-update` now supports detached Ed25519 verification of checksum manifests when signature file is provided, with optional policy enforcement requiring signatures.
+  - Added signature verification helpers in `src/evolution.rs`:
+    - public key parsing (hex/base64)
+    - signature parsing (raw bytes, hex, base64)
+    - detached signature verification against checksum-manifest contents
+  - Added/updated tests:
+    - `evolution::tests::resolve_artifact_sha256_from_sums_verifies_detached_signature`
+    - `evolution::tests::resolve_artifact_sha256_from_sums_rejects_invalid_detached_signature`
+    - `evolution::tests::resolve_artifact_sha256_from_sums_requires_signature_when_policy_enabled`
+    - `tests/evolution_guard.rs::evolution_stage_update_requires_sha256sums_signature_when_policy_enabled`
+    - `tests/evolution_guard.rs::evolution_stage_update_accepts_signed_sha256sums_manifest`
+    - Updated all integration env reset lists for new signature-policy env vars.
+  - Updated docs/env:
+    - `.env.example`
+    - `README.md`
+    - `docs/architecture.md`
+    - `docs/release.md`
+- Validation after checksum-manifest detached-signature increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`66` unit tests + integration tests all green)
+- Implemented anti-rollback version policy for evolution stage/apply:
+  - Added evolution config/env:
+    - `RUSTY_PINCH_EVOLUTION_REQUIRE_NON_ROLLBACK_VERSION`
+  - Added doctor report visibility and warning:
+    - `evolution_require_non_rollback_version`
+    - warning when non-rollback policy is enabled without required manifest signatures.
+  - Extended CLI stage command with:
+    - `--current-version`
+    - `--artifact-version`
+  - `evolution stage-update` now validates artifact version is strictly greater than current version when version metadata is provided, and can require version metadata by policy.
+  - Staged manifest now stores:
+    - `current_binary_version`
+    - `artifact_binary_version`
+  - `evolution apply-staged-update` now enforces non-rollback version policy from staged manifest metadata when enabled; failures set manifest status to `version_failed`.
+  - Evolution audit records/hash payload now include staged current/artifact version metadata.
+  - Manifest signature payload now includes version fields; verification supports compatibility fallback for prior key-id signatures that did not include version fields.
+  - Added/updated tests:
+    - `evolution::tests::stage_blue_green_update_rejects_rollback_version_when_policy_enabled`
+    - `evolution::tests::stage_blue_green_update_records_version_metadata`
+    - `evolution::tests::apply_staged_update_fails_when_non_rollback_version_is_required`
+    - `evolution::tests::apply_staged_update_accepts_key_id_signature_without_version_payload_fields`
+    - `tests/evolution_guard.rs::evolution_stage_update_requires_versions_when_non_rollback_policy_enabled`
+    - `tests/evolution_guard.rs::evolution_stage_update_rejects_rollback_version_when_policy_enabled`
+    - Updated integration env reset lists across suites for `RUSTY_PINCH_EVOLUTION_REQUIRE_NON_ROLLBACK_VERSION`.
+  - Updated docs/env:
+    - `.env.example`
+    - `README.md`
+    - `docs/architecture.md`
+    - `docs/release.md`
+- Validation after anti-rollback version-policy increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`70` unit tests + integration tests all green)
+- Implemented signed checksum-manifest provenance anchoring with apply-time re-verification:
+  - Added evolution config/env:
+    - `RUSTY_PINCH_EVOLUTION_REQUIRE_SIGNED_CHECKSUM_MANIFEST_PROVENANCE`
+  - Added doctor report visibility/warnings:
+    - `evolution_require_signed_checksum_manifest_provenance`
+    - warning when apply policy is enabled while stage signature policy is disabled
+    - warning when apply policy is enabled without trusted Ed25519 public key
+  - Added checksum-manifest provenance models:
+    - `ChecksumManifestProvenance`
+    - `ResolvedArtifactChecksumFromSums`
+  - Added `resolve_artifact_sha256_from_sums_with_provenance(...)`:
+    - resolves artifact checksum
+    - captures checksum-manifest path/hash/signature verification metadata
+  - Stage path now stores anchored checksum-manifest provenance fields in staged manifest:
+    - `checksum_manifest_path`
+    - `checksum_manifest_sha256`
+    - `checksum_manifest_signature_path`
+    - `checksum_manifest_signature_verified`
+  - Apply path now optionally enforces signed checksum-manifest provenance policy:
+    - requires staged signature-verified checksum-manifest provenance metadata
+    - revalidates checksum-manifest SHA-256 at apply time
+    - revalidates detached Ed25519 signature at apply time using trusted key
+    - optional trusted checksum-manifest hash pin is rechecked at apply time
+    - failures set manifest status to `checksum_provenance_failed`
+  - Evolution audit records/hash payload now include checksum-manifest provenance integrity fields.
+  - Manifest signature payload now includes checksum-manifest provenance fields.
+    - verification compatibility fallback remains for prior payload versions.
+  - Added/updated tests:
+    - `evolution::tests::apply_staged_update_fails_when_signed_checksum_manifest_provenance_is_tampered`
+    - `evolution::tests::apply_staged_update_succeeds_with_required_signed_checksum_manifest_provenance`
+    - `tests/evolution_guard.rs::evolution_apply_requires_signed_checksum_manifest_provenance_when_policy_enabled`
+    - Updated integration env reset lists for new apply-time provenance policy env var.
+  - Updated docs/env:
+    - `.env.example`
+    - `README.md`
+    - `docs/architecture.md`
+    - `docs/release.md`
+- Validation after signed checksum-manifest provenance anchoring increment:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`72` unit tests + integration tests all green)
+- Resumed execution on user "ok go for it"; selected next slice as rollout concurrency/lock safety plus crash-consistent stage/apply idempotency guards.
+- Implemented rollout concurrency/lock safety + crash-consistent apply idempotency hardening:
+  - Added exclusive evolution operation lock at `${RUSTY_PINCH_WORKSPACE}/updates/evolution.lock` via `EvolutionOperationLock` in `src/evolution.rs`.
+  - `stage_blue_green_update` now:
+    - acquires operation lock
+    - rejects staging while manifest status indicates in-progress apply (`applying`, `healthcheck_pending`)
+  - `apply_staged_update` now:
+    - acquires operation lock
+    - supports checkpointed apply states:
+      - `staged -> applying -> healthcheck_pending -> activated|rolled_back`
+    - resumes interrupted applies from `applying` / `healthcheck_pending`
+    - treats terminal apply statuses (`activated`, `rolled_back`) as idempotent re-run responses
+    - uses atomic active-slot marker writes
+    - records additional audit events for in-progress checkpoints
+  - Staged manifest schema now includes apply checkpoint metadata:
+    - `apply_started_at`
+    - `apply_from_slot`
+    - `apply_to_slot`
+  - Added helper guards/utilities:
+    - `read_manifest_if_exists`
+    - apply status helpers
+    - active-slot marker read/write helpers
+    - terminal report reconstruction helper for idempotent apply responses
+- Added/updated unit tests in `src/evolution.rs`:
+  - `stage_blue_green_update_fails_when_operation_lock_is_held`
+  - `stage_blue_green_update_rejects_when_apply_is_in_progress`
+  - `apply_staged_update_fails_when_operation_lock_is_held`
+  - `apply_staged_update_is_idempotent_after_activation`
+  - `apply_staged_update_resumes_from_healthcheck_pending_state`
+- Updated docs:
+  - `README.md`
+  - `docs/architecture.md`
+  - `docs/release.md`
+- Validation after lock/idempotency hardening increment:
+  - `cargo fmt --all` passed
+  - `cargo test evolution::tests -- --nocapture` passed (`34` evolution unit tests)
+  - `cargo test` passed (`77` unit tests + integration tests all green)
+- Implemented stale lock recovery ergonomics for evolution operations:
+  - Added evolution lock policy config/env:
+    - `RUSTY_PINCH_EVOLUTION_LOCK_STALE_AFTER_SECS` (default `900`, `0` disables stale detection)
+    - `RUSTY_PINCH_EVOLUTION_AUTO_RECOVER_STALE_LOCK` (default `true`)
+  - Wired lock policy into runtime:
+    - `EvolutionManager::with_lock_policy(...)` in `src/evolution.rs`
+    - app startup now configures manager from settings in `src/app.rs`
+  - Added lock inspection/reporting model and APIs in `src/evolution.rs`:
+    - `EvolutionLockStatusReport`
+    - `lock_status()`
+    - `force_unlock()`
+    - lock parser/inspection helpers (`operation`, `pid`, `started_at`, age/stale computation)
+  - Enhanced operation lock acquisition:
+    - detects stale lock age by `started_at` (fallback file mtime)
+    - optionally auto-recovers stale locks before stage/apply
+    - emits recovery event `evolution_lock_recovered`
+    - stale lock errors now include force-unlock guidance
+  - Added new CLI/app commands:
+    - `evolution lock-status`
+    - `evolution force-unlock --confirm`
+  - Doctor output now includes:
+    - `evolution_lock_stale_after_secs`
+    - `evolution_auto_recover_stale_lock`
+    - warning when auto-recover is enabled but stale threshold is disabled
+- Added/updated tests:
+  - `src/evolution.rs`:
+    - `lock_status_reports_stale_lock_details`
+    - `force_unlock_removes_existing_lock_file`
+    - `stage_blue_green_update_recovers_stale_lock_when_policy_enabled`
+    - `stage_blue_green_update_does_not_recover_stale_lock_when_policy_disabled`
+  - `tests/evolution_guard.rs`:
+    - `evolution_force_unlock_requires_confirm_flag`
+    - `evolution_stage_update_recovers_stale_lock_when_policy_enabled`
+  - Updated integration env reset lists to include:
+    - `RUSTY_PINCH_EVOLUTION_LOCK_STALE_AFTER_SECS`
+    - `RUSTY_PINCH_EVOLUTION_AUTO_RECOVER_STALE_LOCK`
+- Updated docs/env:
+  - `.env.example`
+  - `README.md`
+  - `docs/architecture.md`
+  - `docs/release.md`
+- Validation after stale-lock recovery increment:
+  - `cargo fmt --all` passed
+  - `cargo test evolution::tests -- --nocapture` passed (`38` evolution unit tests)
+  - `cargo test` passed (`81` unit tests + integration tests all green)
+- Implemented rollout recovery diagnostics + richer audit context for partial/incomplete apply states:
+  - Added staged-manifest recovery context fields:
+    - `apply_resume_count`
+    - `last_recovery_note`
+    - `last_observed_active_slot`
+  - `apply_staged_update` now tracks/increments resume count for interrupted apply resumes and records recovery notes/observed active slot across `applying`/`healthcheck_pending` checkpoints.
+  - Evolution audit records now include recovery context fields from staged manifest:
+    - `apply_started_at`
+    - `apply_from_slot`
+    - `apply_to_slot`
+    - `apply_resume_count`
+    - `last_recovery_note`
+    - `last_observed_active_slot`
+  - Added evolution recovery diagnostics API/CLI:
+    - `EvolutionManager::recovery_status()`
+    - app JSON endpoint `evolution_recovery_status_json`
+    - CLI command `evolution recovery-status`
+    - report includes manifest checkpoint context, active-slot marker, drift detection, and operator recommendation text.
+- Added/updated tests:
+  - `src/evolution.rs`:
+    - `recovery_status_reports_interrupted_apply_context`
+    - `recovery_status_flags_drift_for_terminal_state`
+    - extended `apply_staged_update_resumes_from_healthcheck_pending_state` to assert recovery context propagation into manifest + audit record.
+  - `tests/evolution_guard.rs`:
+    - `evolution_recovery_status_reports_partial_apply_diagnostics`
+- Updated docs:
+  - `README.md` (new `evolution recovery-status` command)
+  - `docs/architecture.md` (recovery diagnostics + audit context)
+  - `docs/release.md` (recovery-status usage in release operations)
+- Validation after recovery-diagnostics/audit-context increment:
+  - `cargo fmt --all` passed
+  - `cargo test evolution::tests -- --nocapture` passed (`40` evolution unit tests)
+  - `cargo test` passed (`83` unit tests + integration tests all green)
+- Implemented signed/verified active-slot marker integrity + observability hardening:
+  - Completed active-slot integrity diagnostics and policy wiring in `src/evolution.rs`:
+    - `inspect_active_slot_integrity(...)`
+    - `read_active_slot_marker_with_integrity(...)`
+    - signed marker sidecar (`active-slot.sig`) read/write/verify helpers
+    - policy-gated marker writes in apply/rollback path with HMAC signature metadata
+    - stage planning now enforces active-slot integrity before selecting passive slot
+  - Added CLI/app diagnostics command:
+    - `evolution active-slot-status`
+    - app API `evolution_active_slot_status_json`
+  - Expanded evolution telemetry in `src/telemetry.rs`:
+    - active-slot integrity status/message/signature flags/policy flag
+    - new recorder `record_evolution_active_slot_integrity(...)`
+  - Wired telemetry snapshot refresh in app lifecycle (`src/app.rs`):
+    - startup integrity snapshot seed
+    - apply path refresh after apply attempt
+    - explicit active-slot status command records snapshot
+  - Monitor hardening in `src/monitor.rs`:
+    - shows active-slot integrity fields in TUI
+    - emits `evolution_alert` line on integrity/policy failures
+  - Updated docs/env:
+    - `.env.example` active-slot signing env contract
+    - `README.md` command/env/observability notes
+    - `docs/architecture.md` evolution + telemetry/monitor details
+    - `docs/release.md` release/policy notes
+  - Added/updated tests:
+    - `src/evolution.rs`:
+      - `blue_green_plan_allows_missing_marker_when_signed_policy_enabled`
+      - `active_slot_integrity_reports_valid_signed_marker`
+      - `active_slot_integrity_detects_marker_signature_tampering`
+      - `blue_green_plan_rejects_invalid_signed_marker_integrity`
+    - `src/telemetry.rs`:
+      - `record_evolution_active_slot_integrity_persists_snapshot`
+    - `tests/evolution_guard.rs`:
+      - `evolution_apply_requires_active_slot_signing_key_when_policy_enabled`
+    - `tests/observability.rs`:
+      - `stats_include_evolution_active_slot_integrity_metrics`
+    - Updated integration env reset lists across:
+      - `tests/channels.rs`
+      - `tests/observability.rs`
+      - `tests/pulse_persistence.rs`
+      - `tests/smoke.rs`
+      - `tests/tools.rs`
+      - `tests/evolution_guard.rs`
+      to include:
+      - `RUSTY_PINCH_EVOLUTION_ACTIVE_SLOT_SIGNING_KEY_ID`
+      - `RUSTY_PINCH_EVOLUTION_ACTIVE_SLOT_SIGNING_KEY`
+      - `RUSTY_PINCH_EVOLUTION_REQUIRE_SIGNED_ACTIVE_SLOT`
+- Validation after active-slot integrity/observability increment:
+  - `cargo check` passed
+  - `cargo test evolution::tests -- --nocapture` passed (`44` evolution unit tests)
+  - `cargo test telemetry::tests -- --nocapture` passed (`4` telemetry tests)
+  - `cargo test --test observability -- --nocapture` passed (`5` integration tests)
+  - `cargo test --test evolution_guard -- --nocapture` passed (`17` integration tests)
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`88` unit tests + integration tests all green)
+- Implemented evolution apply-failure circuit breaker hardening:
+  - Added apply-failure policy/env in config:
+    - `RUSTY_PINCH_EVOLUTION_MAX_CONSECUTIVE_APPLY_FAILURES`
+  - Added persistent failure-circuit state and enforcement in evolution runtime:
+    - consecutive failure tracking
+    - open-circuit apply guard
+    - successful-apply reset path
+  - Added inspection/reset APIs/commands:
+    - `evolution failure-circuit-status`
+    - `evolution failure-circuit-reset --confirm`
+  - Extended recovery diagnostics, telemetry, and monitor alerting with failure-circuit status.
+  - Added/updated tests in:
+    - `src/evolution.rs`
+    - `src/telemetry.rs`
+    - `tests/evolution_guard.rs`
+    - `tests/observability.rs`
+    - integration env reset lists in `tests/channels.rs`, `tests/pulse_persistence.rs`, `tests/smoke.rs`, `tests/tools.rs`
+  - Focused validation completed:
+    - `cargo check` passed
+    - `cargo test evolution::tests -- --nocapture` passed (`46` evolution unit tests)
+    - `cargo test telemetry::tests -- --nocapture` passed (`5` telemetry tests)
+    - `cargo test --test observability -- --nocapture` passed
+    - `cargo test --test evolution_guard -- --nocapture` passed
+- Finalized apply-failure circuit breaker docs/env coverage:
+  - Updated `.env.example` with `RUSTY_PINCH_EVOLUTION_MAX_CONSECUTIVE_APPLY_FAILURES`.
+  - Updated `README.md` with:
+    - commands: `evolution failure-circuit-status`, `evolution failure-circuit-reset --confirm`
+    - env contract for failure-circuit threshold
+    - observability/monitor notes for circuit-open telemetry + alerts
+  - Updated `docs/architecture.md` and `docs/release.md` with failure-circuit policy and operator workflow.
+- Full validation after docs updates:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`91` unit tests + integration tests all green)
+- Implemented staged-manifest freshness/expiry hardening:
+  - Added evolution freshness policy config/env:
+    - `RUSTY_PINCH_EVOLUTION_MAX_STAGED_MANIFEST_AGE_SECS` (default `86400`, `0` disables)
+  - Wired policy through runtime:
+    - `EvolutionManager::with_staged_manifest_age_policy(...)` in `src/evolution.rs`
+    - app startup wiring in `src/app.rs`
+  - Added apply-time freshness enforcement:
+    - `apply_staged_update` now rejects stale/invalid-aged staged manifests before rollout activation checks.
+    - On failure, manifest status is set to `stale_failed`, audit event is appended, and apply-failure circuit counts the attempt.
+  - Expanded recovery diagnostics:
+    - `EvolutionRecoveryStatusReport` now includes:
+      - `manifest_timestamp`
+      - `manifest_age_secs`
+      - `manifest_max_age_secs`
+      - `manifest_expired`
+    - `evolution recovery-status` recommendations now surface stale-manifest remediation guidance.
+  - Extended doctor/config visibility:
+    - `DoctorReport` includes `evolution_max_staged_manifest_age_secs`
+    - `doctor` output in `src/main.rs` now prints `evolution_max_staged_manifest_age_secs`
+    - Added warnings when freshness policy is disabled and when enabled without required manifest signatures.
+  - Added tests:
+    - `src/evolution.rs`:
+      - `recovery_status_reports_stale_manifest_age_diagnostics`
+      - `apply_staged_update_fails_when_staged_manifest_is_stale`
+    - `tests/evolution_guard.rs`:
+      - `evolution_apply_rejects_stale_staged_manifest_when_policy_enabled`
+    - Updated integration env reset lists across:
+      - `tests/channels.rs`
+      - `tests/observability.rs`
+      - `tests/pulse_persistence.rs`
+      - `tests/smoke.rs`
+      - `tests/tools.rs`
+      - `tests/evolution_guard.rs`
+      to include:
+      - `RUSTY_PINCH_EVOLUTION_MAX_STAGED_MANIFEST_AGE_SECS`
+  - Updated docs/env:
+    - `.env.example`
+    - `README.md`
+    - `docs/architecture.md`
+    - `docs/release.md`
+- Validation after staged-manifest freshness increment:
+  - `cargo fmt --all` passed
+  - `cargo test evolution::tests -- --nocapture` passed (`48` evolution unit tests)
+  - `cargo test --test evolution_guard -- --nocapture` passed (`19` integration tests)
+  - `cargo test` passed (`93` unit tests + integration tests all green)
+- Push checkpoint:
+  - Created branch `feat/rusty-pinch-ai-foundation-20260219`.
+  - Committed scoped `rusty-pinch` foundation/hardening changes as:
+    - `ddf7a5e feat(rusty-pinch): deliver ai foundation and rollout safety hardening`
+  - Successfully pushed branch to `origin` with updated fine-grained token.
+  - GitHub PR URL emitted by remote:
+    - `https://github.com/fred-vu/rusty-pinch/pull/new/feat/rusty-pinch-ai-foundation-20260219`
+- Repository reorganization for strict publish isolation:
+  - Initialized standalone git repository at `/home/fredvu/ai-projects/picoclaw/rusty-pinch/.git`.
+  - Added remote `origin=https://github.com/fred-vu/rusty-pinch.git`.
+  - Checked out local `main` tracking `origin/main`.
+  - Reapplied local `rusty-pinch` foundation snapshot onto standalone repo working tree.
+  - Result: `git status` in standalone repo contains only `rusty-pinch` project files; no parent `picoclaw` paths are tracked or pushable from this repo.
+
+Now:
+- Standalone `rusty-pinch` repo reorg complete; awaiting user confirmation to commit/push from isolated repo.
+
+Next:
+- Create isolated publish branch inside standalone repo.
+- Commit foundation/hardening delta and push to `origin` (now guaranteed to exclude parent `picoclaw` content).
+- Optionally delete prior branch `feat/rusty-pinch-ai-foundation-20260219`.
+
+Open questions (UNCONFIRMED if needed):
+- Resolved this turn: signed-active-slot bootstrap behavior allows missing marker but enforces signature verification when marker/signature exist and policy is enabled.
+- Resolved this turn: proceed with immediate branch creation and push.
+- UNCONFIRMED: whether to delete previously pushed branch after standalone repo push is confirmed.
+
+Working set (files/ids/commands):
+- `CONTINUITY.md`
+- `docs/production_development_plan AI System Foundation for Rusty Pinch.md`
+- `docs/architecture.md`
+- `docs/product-specification.md`
+- `README.md`
+- `Cargo.toml`
+- `Cargo.lock`
+- `src/main.rs`
+- `src/app.rs`
+- `src/config.rs`
+- `src/lib.rs`
+- `src/codex.rs`
+- `src/skills.rs`
+- `src/pulse.rs`
+- `src/evolution.rs`
+- `src/telemetry.rs`
+- `src/monitor.rs`
+- `.github/workflows/ci.yml`
+- `.github/workflows/release.yml`
+- `.env.example`
+- `tests/pulse_persistence.rs`
+- `tests/observability.rs`
+- `tests/evolution_guard.rs`
+- `tests/smoke.rs`
+- `tests/tools.rs`
+- `tests/channels.rs`
+- `cargo fmt --all`
+- `cargo test`

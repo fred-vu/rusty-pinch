@@ -71,13 +71,21 @@ docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
 
 ## CI release flow
 
-- PR/Main workflows run:
-  - format/check/test
-  - local provider smoke run
-  - package build + artifact upload
-- Manual release workflow (`Create Tag and Release`) now also:
-  - builds Rusty Pinch package
-  - uploads `.tar.gz` + `.sha256` to the GitHub release tag
+- `ci.yml` (push to `main`, pull request, or manual dispatch):
+  - `cargo fmt --check`
+  - `cargo build --locked`
+  - `cargo test --locked`
+- `release.yml` (tag push `v*` or manual dispatch):
+  - release gate (`fmt` + tests on Linux)
+  - matrix release builds:
+    - `x86_64-unknown-linux-gnu`
+    - `x86_64-apple-darwin`
+    - `x86_64-pc-windows-msvc`
+  - archive artifact upload (`.tar.gz` on Unix, `.zip` on Windows)
+  - consolidated `SHA256SUMS.txt` generation
+  - automatic GitHub Release publication with all artifacts when triggered by tag push
+
+For self-update staging, `rusty-pinch evolution stage-update` can resolve artifact checksums directly from `SHA256SUMS.txt` via `--artifact-sha256-sums-file` (and optional `--artifact-sha256-entry`). Trust can be pinned by checksum (`RUSTY_PINCH_EVOLUTION_TRUSTED_SHA256SUMS_SHA256`) and/or detached Ed25519 signature verification (`--artifact-sha256-sums-signature-file`, `RUSTY_PINCH_EVOLUTION_TRUSTED_SHA256SUMS_ED25519_PUBLIC_KEY`, optional policy `RUSTY_PINCH_EVOLUTION_REQUIRE_SHA256SUMS_SIGNATURE`). Optional apply-time signed provenance policy `RUSTY_PINCH_EVOLUTION_REQUIRE_SIGNED_CHECKSUM_MANIFEST_PROVENANCE` re-validates checksum-manifest checksum/signature at apply. Optional non-rollback policy `RUSTY_PINCH_EVOLUTION_REQUIRE_NON_ROLLBACK_VERSION` enforces `--current-version` and `--artifact-version` and blocks downgrade updates. Optional active-slot signing policy (`RUSTY_PINCH_EVOLUTION_ACTIVE_SLOT_SIGNING_KEY`, `RUSTY_PINCH_EVOLUTION_ACTIVE_SLOT_SIGNING_KEY_ID`, `RUSTY_PINCH_EVOLUTION_REQUIRE_SIGNED_ACTIVE_SLOT`) verifies active-slot marker integrity during stage/apply. Optional staged-manifest freshness policy (`RUSTY_PINCH_EVOLUTION_MAX_STAGED_MANIFEST_AGE_SECS`) blocks apply when staged manifests are older than the configured threshold. Optional apply-failure circuit breaker policy (`RUSTY_PINCH_EVOLUTION_MAX_CONSECUTIVE_APPLY_FAILURES`) blocks new apply attempts after repeated rollout failures until operator reset (`evolution failure-circuit-status`, `evolution failure-circuit-reset --confirm`). Rollout mutations are serialized through `${RUSTY_PINCH_WORKSPACE}/updates/evolution.lock`, and apply resumes safely from checkpointed states (`applying`, `healthcheck_pending`) after interruptions. Stale lock handling is policy-driven (`RUSTY_PINCH_EVOLUTION_LOCK_STALE_AFTER_SECS`, `RUSTY_PINCH_EVOLUTION_AUTO_RECOVER_STALE_LOCK`) with manual controls available via `evolution lock-status` and `evolution force-unlock --confirm`; partial apply diagnostics are available via `evolution recovery-status` (including manifest age/expiry details), and active-slot diagnostics via `evolution active-slot-status`.
 
 ## Release checklist
 

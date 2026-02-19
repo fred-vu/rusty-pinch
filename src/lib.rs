@@ -1,10 +1,14 @@
 pub mod app;
 pub mod bus;
 pub mod channels;
+pub mod codex;
 pub mod config;
+pub mod evolution;
 pub mod monitor;
 pub mod prompt;
 pub mod provider;
+pub mod pulse;
 pub mod session;
+pub mod skills;
 pub mod telemetry;
 pub mod tools;

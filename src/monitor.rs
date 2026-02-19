@@ -172,14 +172,111 @@ fn render_dashboard(
     match telemetry {
         Some(value) => {
             println!(
-                "turns: total={} ok={} error={} provider={} tool={}",
+                "turns: total={} ok={} error={} provider={} tool={} skill={}",
                 value.total_turns,
                 value.ok_turns,
                 value.error_turns,
                 value.provider_turns,
-                value.tool_turns
+                value.tool_turns,
+                value.skill_turns
             );
             println!("last_update: {}", value.updated_at);
+            if let Some(codex) = &value.codex {
+                println!(
+                    "codex: accounts={}/{} queue={}/{} threshold={}%",
+                    codex.accounts_healthy,
+                    codex.accounts_total,
+                    codex.queue_depth,
+                    codex.queue_capacity,
+                    codex.rate_limit_threshold_percent
+                );
+            }
+            if let Some(pulse) = &value.pulse {
+                println!(
+                    "pulse: jobs={} enabled={} pending_approvals={} goals={}/{} last_tick={} err={}",
+                    pulse.jobs_total,
+                    pulse.jobs_enabled,
+                    pulse.pending_approvals,
+                    pulse.goals_achieved,
+                    pulse.goals_total,
+                    pulse
+                        .last_tick_executed_jobs
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "n/a".to_string()),
+                    pulse
+                        .last_tick_error_jobs
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "n/a".to_string())
+                );
+            }
+            if let Some(evolution) = &value.evolution {
+                println!(
+                    "evolution: skill={} ({}) apply={} rollback={} timeout={}",
+                    evolution.last_skill_name.as_deref().unwrap_or("<none>"),
+                    evolution.last_skill_status.as_deref().unwrap_or("n/a"),
+                    evolution.last_apply_status.as_deref().unwrap_or("<none>"),
+                    evolution
+                        .rollback_performed
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "n/a".to_string()),
+                    evolution
+                        .healthcheck_timed_out
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "n/a".to_string())
+                );
+                if let Some(status) = evolution.active_slot_integrity_status.as_deref() {
+                    println!(
+                        "evolution_active_slot: status={} sig_present={} sig_verified={} require_signed={}",
+                        status,
+                        evolution
+                            .active_slot_signature_present
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "n/a".to_string()),
+                        evolution
+                            .active_slot_signature_verified
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "n/a".to_string()),
+                        evolution
+                            .active_slot_require_signed
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "n/a".to_string())
+                    );
+                    let require_signed = evolution.active_slot_require_signed.unwrap_or(false);
+                    let alert = match status {
+                        "valid" | "missing_marker" => false,
+                        "unsigned" | "signature_present_unverified" => require_signed,
+                        _ => true,
+                    };
+                    if alert {
+                        println!(
+                            "evolution_alert: active-slot integrity {}",
+                            evolution
+                                .active_slot_integrity_message
+                                .as_deref()
+                                .unwrap_or("requires operator review")
+                        );
+                    }
+                }
+                if let Some(circuit_open) = evolution.apply_failure_circuit_open {
+                    println!(
+                        "evolution_failure_circuit: open={} failures={} threshold={}",
+                        circuit_open,
+                        evolution
+                            .apply_failure_consecutive
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "n/a".to_string()),
+                        evolution
+                            .apply_failure_threshold
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "disabled".to_string())
+                    );
+                    if circuit_open {
+                        println!(
+                            "evolution_alert: apply failure circuit open; reset only after remediation"
+                        );
+                    }
+                }
+            }
             if let Some(last) = &value.last_turn {
                 println!(
                     "last_turn: request_id={} path={} status={} session={}",

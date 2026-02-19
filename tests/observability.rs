@@ -33,6 +33,42 @@ fn reset_rusty_env() {
         "RUSTY_PINCH_CHANNELS_WHATSAPP_BRIDGE_URL",
         "RUSTY_PINCH_CHANNELS_WHATSAPP_ALLOW_FROM",
         "RUSTY_PINCH_CHANNELS_WHATSAPP_RECONNECT_MS",
+        "RUSTY_PINCH_CODEX_ENABLED",
+        "RUSTY_PINCH_CODEX_CLI_BIN",
+        "RUSTY_PINCH_CODEX_CLI_ARGS",
+        "RUSTY_PINCH_CODEX_PROMPT_FLAG",
+        "RUSTY_PINCH_CODEX_MODEL_FLAG",
+        "RUSTY_PINCH_CODEX_TIMEOUT_SECS",
+        "RUSTY_PINCH_CODEX_QUEUE_CAPACITY",
+        "RUSTY_PINCH_CODEX_RATE_LIMIT_THRESHOLD_PERCENT",
+        "RUSTY_PINCH_CODEX_RATE_WINDOW_SECS",
+        "RUSTY_PINCH_CODEX_HEALTHCHECK_INTERVAL_SECS",
+        "RUSTY_PINCH_CODEX_HEALTHCHECK_ARGS",
+        "RUSTY_PINCH_CODEX_MODEL",
+        "RUSTY_PINCH_CODEX_ACCOUNTS",
+        "RUSTY_PINCH_CODEX_ACCOUNT_MAX_REQUESTS",
+        "RUSTY_PINCH_CODEX_ACCOUNT_API_KEY_ENV",
+        "RUSTY_PINCH_CODEX_ACCOUNT_MODEL",
+        "RUSTY_PINCH_PULSE_AUTO_ALLOW_ACTIONS",
+        "RUSTY_PINCH_EVOLUTION_REQUIRE_APPLY_CONFIRM",
+        "RUSTY_PINCH_EVOLUTION_REQUIRE_STAGE_ARTIFACT_SHA256",
+        "RUSTY_PINCH_EVOLUTION_REQUIRE_VERIFIED_STAGE_ARTIFACT_SHA256",
+        "RUSTY_PINCH_EVOLUTION_REQUIRE_SIGNED_CHECKSUM_MANIFEST_PROVENANCE",
+        "RUSTY_PINCH_EVOLUTION_REQUIRE_NON_ROLLBACK_VERSION",
+        "RUSTY_PINCH_EVOLUTION_TRUSTED_SHA256SUMS_SHA256",
+        "RUSTY_PINCH_EVOLUTION_TRUSTED_SHA256SUMS_ED25519_PUBLIC_KEY",
+        "RUSTY_PINCH_EVOLUTION_REQUIRE_SHA256SUMS_SIGNATURE",
+        "RUSTY_PINCH_EVOLUTION_MANIFEST_SIGNING_KEY_ID",
+        "RUSTY_PINCH_EVOLUTION_MANIFEST_SIGNING_KEY",
+        "RUSTY_PINCH_EVOLUTION_MANIFEST_SIGNING_KEYS",
+        "RUSTY_PINCH_EVOLUTION_REQUIRE_MANIFEST_SIGNATURE",
+        "RUSTY_PINCH_EVOLUTION_ACTIVE_SLOT_SIGNING_KEY_ID",
+        "RUSTY_PINCH_EVOLUTION_ACTIVE_SLOT_SIGNING_KEY",
+        "RUSTY_PINCH_EVOLUTION_REQUIRE_SIGNED_ACTIVE_SLOT",
+        "RUSTY_PINCH_EVOLUTION_MAX_STAGED_MANIFEST_AGE_SECS",
+        "RUSTY_PINCH_EVOLUTION_MAX_CONSECUTIVE_APPLY_FAILURES",
+        "RUSTY_PINCH_EVOLUTION_LOCK_STALE_AFTER_SECS",
+        "RUSTY_PINCH_EVOLUTION_AUTO_RECOVER_STALE_LOCK",
         "RUSTY_PINCH_ENV_FILE",
     ] {
         std::env::remove_var(key);
@@ -168,4 +204,55 @@ fn telemetry_persists_across_app_instances() {
         .as_object()
         .expect("last_turn should be object");
     assert_eq!(last.get("path").and_then(Value::as_str), Some("provider"));
+}
+
+#[test]
+fn stats_include_pulse_snapshot_metrics() {
+    let _guard = ENV_LOCK.lock().expect("lock env");
+    reset_rusty_env();
+    let (mut app, _temp) = new_app("local");
+
+    app.pulse_add_goal_json("goal-obs", "monitor pulse telemetry")
+        .expect("add pulse goal");
+
+    let stats = app.stats_json().expect("stats");
+    let data: Value = serde_json::from_str(&stats).expect("valid stats json");
+    let pulse = data
+        .get("telemetry")
+        .and_then(|telemetry| telemetry.get("pulse"))
+        .and_then(Value::as_object)
+        .expect("pulse telemetry should exist");
+
+    assert!(pulse
+        .get("jobs_total")
+        .and_then(Value::as_u64)
+        .is_some_and(|v| v >= 1));
+    assert_eq!(pulse.get("goals_total").and_then(Value::as_u64), Some(1));
+}
+
+#[test]
+fn stats_include_evolution_active_slot_integrity_metrics() {
+    let _guard = ENV_LOCK.lock().expect("lock env");
+    reset_rusty_env();
+    let (mut app, _temp) = new_app("local");
+
+    app.evolution_active_slot_status_json()
+        .expect("active-slot status");
+
+    let stats = app.stats_json().expect("stats");
+    let data: Value = serde_json::from_str(&stats).expect("valid stats json");
+    let evolution = data
+        .get("telemetry")
+        .and_then(|telemetry| telemetry.get("evolution"))
+        .and_then(Value::as_object)
+        .expect("evolution telemetry should exist");
+
+    assert!(evolution
+        .get("active_slot_integrity_status")
+        .and_then(Value::as_str)
+        .is_some());
+    assert!(evolution.get("active_slot_require_signed").is_some());
+    assert!(evolution.get("apply_failure_consecutive").is_some());
+    assert!(evolution.get("apply_failure_threshold").is_some());
+    assert!(evolution.get("apply_failure_circuit_open").is_some());
 }
