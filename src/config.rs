@@ -179,7 +179,7 @@ impl Settings {
             },
         };
 
-        let codex = load_codex_settings(&model);
+        let codex = load_codex_settings();
         let pulse = load_pulse_settings();
         let evolution = load_evolution_settings();
 
@@ -627,15 +627,19 @@ fn resolve_api_base(provider: &str) -> Option<String> {
     }
 }
 
-fn load_codex_settings(default_model: &str) -> CodexSettings {
+fn load_codex_settings() -> CodexSettings {
     let enabled = read_bool_env("RUSTY_PINCH_CODEX_ENABLED", false);
     let cli_bin = env::var("RUSTY_PINCH_CODEX_CLI_BIN")
         .unwrap_or_else(|_| "codex".to_string())
         .trim()
         .to_string();
-    let cli_args = read_args_env("RUSTY_PINCH_CODEX_CLI_ARGS");
+    let cli_args = if env::var("RUSTY_PINCH_CODEX_CLI_ARGS").is_ok() {
+        read_args_env("RUSTY_PINCH_CODEX_CLI_ARGS")
+    } else {
+        vec!["exec".to_string()]
+    };
     let prompt_flag = env::var("RUSTY_PINCH_CODEX_PROMPT_FLAG")
-        .unwrap_or_else(|_| "--prompt".to_string())
+        .unwrap_or_default()
         .trim()
         .to_string();
     let model_flag = env::var("RUSTY_PINCH_CODEX_MODEL_FLAG")
@@ -657,8 +661,7 @@ fn load_codex_settings(default_model: &str) -> CodexSettings {
             values
         }
     };
-    let default_model = read_non_empty_env("RUSTY_PINCH_CODEX_MODEL")
-        .or_else(|| Some(default_model.to_string()).filter(|v| !v.trim().is_empty()));
+    let default_model = read_non_empty_env("RUSTY_PINCH_CODEX_MODEL");
     let accounts = read_codex_accounts();
 
     CodexSettings {

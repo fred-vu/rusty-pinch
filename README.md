@@ -139,8 +139,17 @@ Primary variables:
 - `RUSTY_PINCH_ENV_FILE` (optional explicit `.env` file path)
 - `RUSTY_PINCH_CODEX_ENABLED`
 - `RUSTY_PINCH_CODEX_CLI_BIN`
-- `RUSTY_PINCH_CODEX_CLI_ARGS`
+- `RUSTY_PINCH_CODEX_CLI_ARGS` (default `exec`)
+- `RUSTY_PINCH_CODEX_PROMPT_FLAG` (default empty/positional prompt)
+- `RUSTY_PINCH_CODEX_MODEL_FLAG` (default `--model`)
+- `RUSTY_PINCH_CODEX_MODEL` (optional explicit Codex model; defaults to Codex CLI default when unset)
 - `RUSTY_PINCH_CODEX_ACCOUNTS` (format: `id|api_key_env|max_requests|model;...`)
+- `RUSTY_PINCH_CODEX_AUTO_LOGIN` (container entrypoint Codex login bootstrap, default `true`)
+- `RUSTY_PINCH_CODEX_AUTO_LOGIN_MODE` (`chatgpt`, `api-key`, or `off`)
+- `RUSTY_PINCH_CODEX_CHATGPT_DEVICE_AUTH` (run `codex login --device-auth` when ChatGPT session missing)
+- `RUSTY_PINCH_CODEX_LOGIN_TIMEOUT_SECS` (timeout for login bootstrap commands)
+- `RUSTY_PINCH_CODEX_CHATGPT_AUTH_FILE` / `RUSTY_PINCH_CODEX_CHATGPT_AUTH_JSON_B64` (optional pre-seeded ChatGPT auth material)
+- `RUSTY_PINCH_CODEX_AUTO_LOGIN_API_KEY_ENV` (API key source env name for `api-key` mode)
 - `RUSTY_PINCH_CODEX_RATE_LIMIT_THRESHOLD_PERCENT`
 - `RUSTY_PINCH_CODEX_RATE_WINDOW_SECS`
 - `RUSTY_PINCH_CODEX_HEALTHCHECK_INTERVAL_SECS`
@@ -284,6 +293,16 @@ Raspberry Pi compose monitor commands:
 cd rusty-pinch/deploy/container
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --pid 1 --interval-ms 1000
+```
+
+Optional Codex CLI build for Pi container (no host Rust install needed):
+
+```bash
+cd rusty-pinch/deploy/container
+export RUSTY_PINCH_INSTALL_CODEX_CLI=true
+docker-compose -f docker-compose.rpi.yml build rusty-pinch-telegram
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex --version
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
 ```
 
 If turn logs show `Failed to authenticate request with Clerk`, review key envs in

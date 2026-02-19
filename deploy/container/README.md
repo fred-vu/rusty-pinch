@@ -38,7 +38,7 @@ Detailed runbook:
 cd rusty-pinch/deploy/container
 cp rusty-pinch.rpi.env.example rusty-pinch.rpi.env
 # fill API key / Telegram token
-mkdir -p ./state/data ./state/workspace
+mkdir -p ./state/data ./state/workspace ./state/codex-home
 
 docker-compose -f docker-compose.rpi.yml build
 docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
@@ -54,6 +54,55 @@ Optional overrides:
 
 - `RUSTY_PINCH_HOST_STATE_DIR=/opt/rusty-pinch/state` (host persistence root)
 - `RUSTY_PINCH_IMAGE=rusty-pinch:pi-local`
+
+## Optional: Codex integration in container
+
+Host Rust installation is not required. The image build compiles Rust in a builder stage.
+
+To include Codex CLI in the runtime image, enable build arg `INSTALL_CODEX_CLI`:
+
+```bash
+cd rusty-pinch/deploy/container
+export RUSTY_PINCH_INSTALL_CODEX_CLI=true
+docker-compose -f docker-compose.rpi.yml build rusty-pinch-telegram
+```
+
+Then configure runtime env in `rusty-pinch.rpi.env`:
+
+- `RUSTY_PINCH_CODEX_ENABLED=true`
+- `RUSTY_PINCH_CODEX_CLI_BIN=codex`
+- `RUSTY_PINCH_CODEX_CLI_ARGS=exec`
+- `RUSTY_PINCH_CODEX_PROMPT_FLAG=`
+- `RUSTY_PINCH_CODEX_AUTO_LOGIN=true`
+- `RUSTY_PINCH_CODEX_AUTO_LOGIN_MODE=chatgpt`
+- `RUSTY_PINCH_CODEX_CHATGPT_DEVICE_AUTH=true`
+
+Optional account/env wiring:
+
+- `RUSTY_PINCH_OPENAI_API_KEY=<key>`
+- `RUSTY_PINCH_CODEX_ACCOUNTS=primary|RUSTY_PINCH_OPENAI_API_KEY|200|gpt-5-codex`
+
+Auth bootstrap behavior:
+
+- container entrypoint auto-checks `codex login status`
+- login state is persisted in mounted `codex-home` volume
+- when mode is `chatgpt`, entrypoint runs `codex login --device-auth` if session is missing
+- when mode is `api-key`, entrypoint runs `codex login --with-api-key` using `RUSTY_PINCH_CODEX_AUTO_LOGIN_API_KEY_ENV` (default `RUSTY_PINCH_OPENAI_API_KEY`)
+
+Manual fallback command:
+
+```bash
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth
+```
+
+Smoke-check from running worker:
+
+```bash
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex --version
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch codex status
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch codex generate --prompt "ping" --purpose "smoke"
+```
 
 ## Logs and health
 

@@ -5,26 +5,33 @@ services:
     build:
       context: ../../..
       dockerfile: rusty-pinch/deploy/container/Dockerfile
+      args:
+        INSTALL_CODEX_CLI: ${RUSTY_PINCH_INSTALL_CODEX_CLI:-false}
     env_file:
       - ./rusty-pinch.env
     command: ["channels", "telegram"]
     volumes:
       - rusty_pinch_data:/var/lib/rusty-pinch/data
       - rusty_pinch_workspace:/var/lib/rusty-pinch/workspace
+      - rusty_pinch_codex_home:/var/lib/rusty-pinch/codex-home
     restart: unless-stopped
 
   rusty-pinch-whatsapp:
     build:
       context: ../../..
       dockerfile: rusty-pinch/deploy/container/Dockerfile
+      args:
+        INSTALL_CODEX_CLI: ${RUSTY_PINCH_INSTALL_CODEX_CLI:-false}
     env_file:
       - ./rusty-pinch.env
     command: ["channels", "whatsapp"]
     volumes:
       - rusty_pinch_data:/var/lib/rusty-pinch/data
       - rusty_pinch_workspace:/var/lib/rusty-pinch/workspace
+      - rusty_pinch_codex_home:/var/lib/rusty-pinch/codex-home
     restart: unless-stopped
 
 volumes:
   rusty_pinch_data:
   rusty_pinch_workspace:
+  rusty_pinch_codex_home:
