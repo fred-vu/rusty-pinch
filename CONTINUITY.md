@@ -815,16 +815,70 @@ Done:
   - Branch: `feat/foundation-isolated-20260219`
   - Push: `origin/feat/foundation-isolated-20260219` updated from `524a4ff` to `97f9172`
   - Working tree after push: clean
+- Patched default Codex CLI args for non-git container runtimes:
+  - `src/config.rs` default `RUSTY_PINCH_CODEX_CLI_ARGS` is now:
+    - `exec --skip-git-repo-check`
+  - Updated env templates:
+    - `.env.example`
+    - `deploy/container/rusty-pinch.env.example`
+    - `deploy/container/rusty-pinch.rpi.env.example`
+  - Updated docs:
+    - `README.md`
+    - `deploy/container/README.md`
+- Validation after default-args/docs patch:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`93` unit tests + integration tests all green)
+- Added documentation for restart/recreate manual login fallback on Pi:
+  - `deploy/container/README.md`
+  - `docs/runbook-raspberry-pi.md`
+  - `README.md`
+  - `docs/production-healthcheck.md`
+  - New note documents that some deployments may still require manual:
+    - `docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth`
+- Validation after fallback-doc updates:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`93` unit tests + integration tests all green)
+- Implemented provider-default switch to Codex runtime:
+  - `src/config.rs`:
+    - default `RUSTY_PINCH_PROVIDER=codex`
+    - default model for provider `codex` is `gpt-5-codex`
+    - `load_codex_settings` now receives provider/model context
+    - Codex integration defaults enabled (`RUSTY_PINCH_CODEX_ENABLED=true`)
+    - provider health checks no longer require API key when provider is `codex`
+    - doctor warning added for invalid combo (`provider=codex` but Codex disabled)
+  - `src/app.rs`:
+    - provider-turn path now routes through Codex orchestrator when `settings.provider == "codex"`
+    - queued/executed/error outcomes mapped to turn telemetry and response path
+  - Added smoke coverage in `tests/smoke.rs`:
+    - `settings_default_provider_is_codex`
+    - `app_process_turn_supports_codex_provider_path`
+  - Updated env/docs/examples to codex-default baseline:
+    - `.env.example`
+    - `deploy/container/rusty-pinch.env.example`
+    - `deploy/container/rusty-pinch.rpi.env.example`
+    - `deploy/systemd/rusty-pinch.env.example`
+    - `README.md`
+    - `docs/testing.md`
+    - `docs/product-specification.md`
+  - Fixed `.env` parsing pitfall for Codex args by quoting multi-word value:
+    - `RUSTY_PINCH_CODEX_CLI_ARGS="exec --skip-git-repo-check"`
+    - updated in templates/docs/tests (`README.md`, `docs/runbook-raspberry-pi.md`, `deploy/container/README.md`, `tests/smoke.rs`, and env examples)
+- Validation after codex-provider-default patch:
+  - `cargo check` passed
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`93` unit tests + integration tests all green)
 
 Now:
-- Awaiting user pull/test confirmation on Raspberry Pi for Codex-in-container auto-login workflow.
+- User approved commit/push for codex-provider-default patch.
+- Working tree is ready on branch `feat/foundation-isolated-20260219` with validated changes.
 
 Next:
-- Optional hardening follow-up: add explicit `codex auth-status` app command to expose login mode/state directly from Rusty Pinch CLI.
-- Optional follow-up: provide PR/merge guidance for `feat/foundation-isolated-20260219` if user wants direct main update.
+- Commit staged codex-provider-default changes and push branch to `origin`.
 
 Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: zero-touch ChatGPT OAuth in headless containers may still require initial device-auth completion unless auth material is pre-seeded.
+- UNCONFIRMED: whether Raspberry Pi checkout includes commit `97f9172` (Codex install/build-arg + auto-login support).
+- UNCONFIRMED: whether user wants implementation of a new tool to run selected `rusty-pinch` subcommands from Telegram flow.
 
 Working set (files/ids/commands):
 - `CONTINUITY.md`

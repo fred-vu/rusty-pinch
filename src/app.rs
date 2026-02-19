@@ -235,35 +235,110 @@ impl RustyPinchApp {
             user_input,
         );
 
-        let completion = match provider::chat_completion_with_metrics(
-            &self.settings,
-            &history,
-            &prompt,
-            user_input,
-        ) {
-            Ok(response) => response,
-            Err(err) => {
-                let message = err.to_string();
-                self.record_turn(TurnRecord {
-                    timestamp: Utc::now().to_rfc3339(),
-                    request_id: request_id.clone(),
-                    session_id: session_id.to_string(),
-                    path: "provider".to_string(),
-                    status: "error".to_string(),
-                    provider: self.settings.provider.clone(),
-                    model: self.settings.model.clone(),
-                    tool_name: None,
-                    attempts: Some(err.metrics.attempts),
-                    latency_ms: Some(err.metrics.latency_ms),
-                    user_chars: user_input.chars().count(),
-                    response_chars: 0,
-                    error: Some(message.clone()),
-                });
-                return Err(anyhow!("request_id={}: {}", request_id, message));
-            }
-        };
-        let provider_metrics = completion.metrics;
-        let response = completion.content;
+        let (response, provider_attempts, provider_latency_ms) =
+            if self.settings.provider == "codex" {
+                let purpose = format!("provider_turn:{}", session_id);
+                let submit_result = {
+                    let codex = match self.codex_mut() {
+                        Ok(codex) => codex,
+                        Err(err) => {
+                            let message = err.to_string();
+                            self.record_turn(TurnRecord {
+                                timestamp: Utc::now().to_rfc3339(),
+                                request_id: request_id.clone(),
+                                session_id: session_id.to_string(),
+                                path: "provider".to_string(),
+                                status: "error".to_string(),
+                                provider: self.settings.provider.clone(),
+                                model: self.settings.model.clone(),
+                                tool_name: None,
+                                attempts: None,
+                                latency_ms: None,
+                                user_chars: user_input.chars().count(),
+                                response_chars: 0,
+                                error: Some(message.clone()),
+                            });
+                            return Err(anyhow!("request_id={}: {}", request_id, message));
+                        }
+                    };
+                    codex.submit(&prompt, &purpose)
+                };
+
+                if let Some(codex_runtime) = self.codex.as_mut() {
+                    let status = codex_runtime.status();
+                    self.record_codex_status_snapshot(&status);
+                }
+
+                match submit_result {
+                    Ok(CodexSubmitResult::Executed(exec)) => {
+                        (exec.output, Some(1), Some(exec.latency_ms))
+                    }
+                    Ok(CodexSubmitResult::Queued {
+                        task_id,
+                        queue_depth,
+                        reason,
+                    }) => (
+                        format!(
+                            "[codex:queued] task_id={} queue_depth={} reason={}",
+                            task_id, queue_depth, reason
+                        ),
+                        Some(0),
+                        None,
+                    ),
+                    Err(err) => {
+                        let message = err.to_string();
+                        self.record_turn(TurnRecord {
+                            timestamp: Utc::now().to_rfc3339(),
+                            request_id: request_id.clone(),
+                            session_id: session_id.to_string(),
+                            path: "provider".to_string(),
+                            status: "error".to_string(),
+                            provider: self.settings.provider.clone(),
+                            model: self.settings.model.clone(),
+                            tool_name: None,
+                            attempts: Some(1),
+                            latency_ms: None,
+                            user_chars: user_input.chars().count(),
+                            response_chars: 0,
+                            error: Some(message.clone()),
+                        });
+                        return Err(anyhow!("request_id={}: {}", request_id, message));
+                    }
+                }
+            } else {
+                let completion = match provider::chat_completion_with_metrics(
+                    &self.settings,
+                    &history,
+                    &prompt,
+                    user_input,
+                ) {
+                    Ok(response) => response,
+                    Err(err) => {
+                        let message = err.to_string();
+                        self.record_turn(TurnRecord {
+                            timestamp: Utc::now().to_rfc3339(),
+                            request_id: request_id.clone(),
+                            session_id: session_id.to_string(),
+                            path: "provider".to_string(),
+                            status: "error".to_string(),
+                            provider: self.settings.provider.clone(),
+                            model: self.settings.model.clone(),
+                            tool_name: None,
+                            attempts: Some(err.metrics.attempts),
+                            latency_ms: Some(err.metrics.latency_ms),
+                            user_chars: user_input.chars().count(),
+                            response_chars: 0,
+                            error: Some(message.clone()),
+                        });
+                        return Err(anyhow!("request_id={}: {}", request_id, message));
+                    }
+                };
+                (
+                    completion.content,
+                    Some(completion.metrics.attempts),
+                    Some(completion.metrics.latency_ms),
+                )
+            };
 
         if let Err(err) = self
             .sessions
@@ -280,8 +355,8 @@ impl RustyPinchApp {
                 provider: self.settings.provider.clone(),
                 model: self.settings.model.clone(),
                 tool_name: None,
-                attempts: Some(provider_metrics.attempts),
-                latency_ms: Some(provider_metrics.latency_ms),
+                attempts: provider_attempts,
+                latency_ms: provider_latency_ms,
                 user_chars: user_input.chars().count(),
                 response_chars: 0,
                 error: Some(message.clone()),
@@ -304,8 +379,8 @@ impl RustyPinchApp {
                 provider: self.settings.provider.clone(),
                 model: self.settings.model.clone(),
                 tool_name: None,
-                attempts: Some(provider_metrics.attempts),
-                latency_ms: Some(provider_metrics.latency_ms),
+                attempts: provider_attempts,
+                latency_ms: provider_latency_ms,
                 user_chars: user_input.chars().count(),
                 response_chars: 0,
                 error: Some(message.clone()),
@@ -325,8 +400,8 @@ impl RustyPinchApp {
             provider: self.settings.provider.clone(),
             model: self.settings.model.clone(),
             tool_name: None,
-            attempts: Some(provider_metrics.attempts),
-            latency_ms: Some(provider_metrics.latency_ms),
+            attempts: provider_attempts,
+            latency_ms: provider_latency_ms,
             user_chars: user_input.chars().count(),
             response_chars: response.chars().count(),
             error: None,
