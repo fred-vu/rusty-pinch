@@ -67,6 +67,35 @@ Core commands:
 - `cargo run -- channels whatsapp`: start WhatsApp bridge listener loop
 - `cargo run -- channels telegram --max-messages 1`: one-message Telegram smoke test
 - `cargo run -- channels whatsapp --max-messages 1`: one-message WhatsApp smoke test
+- `cargo run -- skills list`: list Rhai skills in workspace
+- `cargo run -- skills dry-run --name <skill>`: compile-check a skill
+- `cargo run -- skills run --session <id> --name <skill> --args "<arg text>"`: execute a skill
+- `cargo run -- codex status`: inspect Codex account pool and queue
+- `cargo run -- codex healthcheck`: force Codex account health checks
+- `cargo run -- codex generate --prompt "<text>" --purpose "<goal>"`: submit one Codex task
+- `cargo run -- codex drain-one`: execute one queued Codex task if allowed
+- `cargo run -- pulse status`: inspect scheduler, goals, pending approvals
+- `cargo run -- pulse job list`: list scheduler jobs
+- `cargo run -- pulse job add-http-healthcheck --id api-health --interval-secs 60 --url "https://example.com/health" --expected-status 200 --timeout-secs 20`: register external health probe
+- `cargo run -- pulse job enable --id <job-id>`: enable a scheduler job
+- `cargo run -- pulse job disable --id <job-id>`: disable a scheduler job
+- `cargo run -- pulse job remove --id <job-id>`: remove a scheduler job
+- `cargo run -- pulse tick`: run due scheduler jobs once
+- `cargo run -- pulse ooda --action "<action>" --observations '[{"source":"monitor","key":"cpu","value":"95","severity":"warn"}]'`: run one OODA cycle
+- `cargo run -- pulse goal add --id <goal-id> --description "<text>"`: add tracked goal
+- `cargo run -- pulse approve --token <token>`: approve pending risky action
+- `cargo run -- evolution generate-skill --name <skill> --goal "<goal>"`: Codex -> dry-run -> staged promote flow
+- `cargo run -- evolution stage-update --artifact <path-to-binary> --artifact-sha256 <sha256>`: stage blue/green update artifact with explicit checksum
+- `cargo run -- evolution stage-update --artifact <path-to-binary> [--current-version <x.y.z> --artifact-version <x.y.z>] --artifact-sha256-sums-file <SHA256SUMS> [--artifact-sha256-sums-signature-file <SHA256SUMS.sig>] [--artifact-sha256-entry <name>]`: stage update using checksum manifest entry (optional detached signature verification + non-rollback version metadata)
+- `cargo run -- evolution apply-staged-update --confirm --healthcheck-args "doctor" --healthcheck-timeout-secs 30`: apply staged update with checksum verification, staged-manifest freshness guard, key-id-aware signature verification, timeout, auto-rollback on failed health check, and resumable/idempotent apply checkpoints
+- `cargo run -- evolution audit-verify`: validate evolution audit log hash chain integrity
+- `cargo run -- evolution lock-status`: inspect evolution lock holder/stale status diagnostics
+- `cargo run -- evolution recovery-status`: inspect staged apply checkpoint/recovery diagnostics (partial apply state, drift, staged-manifest age/expiry, operator recommendation)
+- `cargo run -- evolution active-slot-status`: inspect active-slot marker signature/integrity diagnostics
+- `cargo run -- evolution failure-circuit-status`: inspect apply-failure circuit breaker status
+- `cargo run -- evolution failure-circuit-reset --confirm`: reset apply-failure circuit breaker after remediation
+- `cargo run -- evolution force-unlock --confirm`: force-remove evolution lock file
+- Evolution stage/apply operations hold an exclusive lock at `${RUSTY_PINCH_WORKSPACE}/updates/evolution.lock` to prevent concurrent rollout mutations.
 
 Tool commands:
 
@@ -108,6 +137,33 @@ Primary variables:
 - `RUSTY_PINCH_WORKSPACE`
 - `RUSTY_PINCH_TELEMETRY_FILE` (default `${RUSTY_PINCH_DATA_DIR}/telemetry/latest.json`)
 - `RUSTY_PINCH_ENV_FILE` (optional explicit `.env` file path)
+- `RUSTY_PINCH_CODEX_ENABLED`
+- `RUSTY_PINCH_CODEX_CLI_BIN`
+- `RUSTY_PINCH_CODEX_CLI_ARGS`
+- `RUSTY_PINCH_CODEX_ACCOUNTS` (format: `id|api_key_env|max_requests|model;...`)
+- `RUSTY_PINCH_CODEX_RATE_LIMIT_THRESHOLD_PERCENT`
+- `RUSTY_PINCH_CODEX_RATE_WINDOW_SECS`
+- `RUSTY_PINCH_CODEX_HEALTHCHECK_INTERVAL_SECS`
+- `RUSTY_PINCH_PULSE_AUTO_ALLOW_ACTIONS` (CSV keywords; `*` to auto-allow all risky actions)
+- `RUSTY_PINCH_EVOLUTION_REQUIRE_APPLY_CONFIRM` (default `true`; requires `--confirm` for apply-staged-update)
+- `RUSTY_PINCH_EVOLUTION_REQUIRE_STAGE_ARTIFACT_SHA256` (default `false`; requires `--artifact-sha256` for stage-update)
+- `RUSTY_PINCH_EVOLUTION_REQUIRE_NON_ROLLBACK_VERSION` (default `false`; requires `--current-version` and `--artifact-version`, and blocks downgrade/rollback versions)
+- `RUSTY_PINCH_EVOLUTION_TRUSTED_SHA256SUMS_SHA256` (optional trusted SHA-256 hash pin for checksum manifest files used by `--artifact-sha256-sums-file`)
+- `RUSTY_PINCH_EVOLUTION_TRUSTED_SHA256SUMS_ED25519_PUBLIC_KEY` (optional trusted Ed25519 public key for checksum-manifest detached signatures; accepts 64-char hex or base64)
+- `RUSTY_PINCH_EVOLUTION_REQUIRE_SHA256SUMS_SIGNATURE` (default `false`; requires `--artifact-sha256-sums-signature-file` when using checksum-manifest stage flow)
+- `RUSTY_PINCH_EVOLUTION_REQUIRE_SIGNED_CHECKSUM_MANIFEST_PROVENANCE` (default `false`; requires apply-time checksum provenance anchored to signed checksum manifests)
+- `RUSTY_PINCH_EVOLUTION_REQUIRE_VERIFIED_STAGE_ARTIFACT_SHA256` (default `false`; requires apply-time manifest provenance from checksum-verified stage)
+- `RUSTY_PINCH_EVOLUTION_MANIFEST_SIGNING_KEY` (optional HMAC key for staged manifest signing/verification)
+- `RUSTY_PINCH_EVOLUTION_MANIFEST_SIGNING_KEY_ID` (optional signing key id for staged manifests; defaults to `default` when key is set)
+- `RUSTY_PINCH_EVOLUTION_MANIFEST_SIGNING_KEYS` (optional rotation keyring for verification, format: `id|key;id|key`)
+- `RUSTY_PINCH_EVOLUTION_REQUIRE_MANIFEST_SIGNATURE` (default `false`; enforce signature verification before apply)
+- `RUSTY_PINCH_EVOLUTION_ACTIVE_SLOT_SIGNING_KEY` (optional HMAC key to sign/verify `${RUSTY_PINCH_WORKSPACE}/updates/active-slot`)
+- `RUSTY_PINCH_EVOLUTION_ACTIVE_SLOT_SIGNING_KEY_ID` (optional key id for active-slot signatures; defaults to manifest key id or `default`)
+- `RUSTY_PINCH_EVOLUTION_REQUIRE_SIGNED_ACTIVE_SLOT` (default `false`; enforce signed active-slot verification during stage/apply)
+- `RUSTY_PINCH_EVOLUTION_MAX_STAGED_MANIFEST_AGE_SECS` (default `86400`; blocks apply when staged manifest age reaches/exceeds threshold, `0` disables)
+- `RUSTY_PINCH_EVOLUTION_MAX_CONSECUTIVE_APPLY_FAILURES` (default `3`; opens apply-failure circuit after N consecutive apply failures, `0` disables)
+- `RUSTY_PINCH_EVOLUTION_LOCK_STALE_AFTER_SECS` (default `900`; stale lock detection threshold, `0` disables)
+- `RUSTY_PINCH_EVOLUTION_AUTO_RECOVER_STALE_LOCK` (default `true`; auto-removes stale evolution lock before stage/apply)
 - `RUSTY_PINCH_CHANNELS_TELEGRAM_ENABLED`
 - `RUSTY_PINCH_CHANNELS_TELEGRAM_TOKEN`
 - `RUSTY_PINCH_CHANNELS_TELEGRAM_ALLOW_FROM`
@@ -174,9 +230,12 @@ Shutdown behavior:
 - `stats` returns persisted telemetry:
 - `total_turns`, `ok_turns`, `error_turns`, `provider_turns`, `tool_turns`
 - `last_turn` persists across process restarts
+- `evolution` telemetry includes latest active-slot integrity state (`active_slot_integrity_status`, signature verify flags, signed-policy flag) and apply-failure circuit status (`apply_failure_consecutive`, `apply_failure_threshold`, `apply_failure_circuit_open`)
 - `monitor` adds live process/host/storage metrics:
 - `cpu%`, `rss`, `vms`, `read_bytes`, `write_bytes`, `fd_count`
 - host `loadavg`, memory + swap, and filesystem/directory footprint
+- evolution monitor panel raises `evolution_alert` when active-slot integrity drifts/signature policy fails or when apply-failure circuit is open
+- evolution rollout events append to `${RUSTY_PINCH_WORKSPACE}/updates/evolution-audit.jsonl` with hash-chained records (`prev_hash` -> `hash`) for forensic review
 
 ## Packaging and Release
 
@@ -191,6 +250,25 @@ make rusty-pinch-package
 make rusty-pinch-verify-package
 # full readiness flow
 make rusty-pinch-readiness
+```
+
+GitHub Actions automation:
+
+- `.github/workflows/ci.yml` runs on `main` pushes, pull requests, and manual dispatch:
+  - `cargo fmt --check`
+  - `cargo build --locked`
+  - `cargo test --locked`
+- `.github/workflows/release.yml` runs on tags matching `v*` (and manual dispatch):
+  - release gate (`fmt` + tests)
+  - matrix release builds for Linux/macOS/Windows
+  - `SHA256SUMS.txt` generation for all release archives
+  - automatic GitHub Release asset publish on tag pushes
+
+Tag a release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
 Deployment profile artifacts:
@@ -247,6 +325,7 @@ Pre-push safety checklist:
 ## Documentation Index
 
 - Architecture: `rusty-pinch/docs/architecture.md`
+- Product Specification: `rusty-pinch/docs/product-specification.md`
 - Testing: `rusty-pinch/docs/testing.md`
 - Operations: `rusty-pinch/docs/runbook.md`
 - Raspberry Pi Deploy Runbook: `rusty-pinch/docs/runbook-raspberry-pi.md`

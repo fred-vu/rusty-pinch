@@ -9,6 +9,7 @@ Use this manifest for first public release and future documentation reviews.
 - `CONTRIBUTING.md`
 - `SECURITY.md`
 - `docs/architecture.md`
+- `docs/product-specification.md`
 - `docs/testing.md`
 - `docs/runbook.md`
 - `docs/runbook-raspberry-pi.md`
