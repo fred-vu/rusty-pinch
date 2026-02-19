@@ -3,8 +3,8 @@ version: "3.3"
 services:
   rusty-pinch-telegram:
     build:
-      context: ../../..
-      dockerfile: rusty-pinch/deploy/container/Dockerfile
+      context: ../..
+      dockerfile: deploy/container/Dockerfile
       args:
         INSTALL_CODEX_CLI: ${RUSTY_PINCH_INSTALL_CODEX_CLI:-false}
     image: ${RUSTY_PINCH_IMAGE:-rusty-pinch:pi-local}
@@ -29,8 +29,8 @@ services:
 
   rusty-pinch-whatsapp:
     build:
-      context: ../../..
-      dockerfile: rusty-pinch/deploy/container/Dockerfile
+      context: ../..
+      dockerfile: deploy/container/Dockerfile
       args:
         INSTALL_CODEX_CLI: ${RUSTY_PINCH_INSTALL_CODEX_CLI:-false}
     image: ${RUSTY_PINCH_IMAGE:-rusty-pinch:pi-local}

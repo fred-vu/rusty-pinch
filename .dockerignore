@@ -1,0 +1,9 @@
+.git
+target
+
+# Local runtime state mounts (can be root-owned on hosts and must never be sent in build context).
+deploy/container/state
+
+# Local operator secrets.
+deploy/container/*.env
+*.env

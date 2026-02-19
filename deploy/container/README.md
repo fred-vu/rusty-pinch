@@ -55,6 +55,21 @@ Optional overrides:
 - `RUSTY_PINCH_HOST_STATE_DIR=/opt/rusty-pinch/state` (host persistence root)
 - `RUSTY_PINCH_IMAGE=rusty-pinch:pi-local`
 
+If build fails with:
+`PermissionError: [Errno 13] Permission denied: .../deploy/container/state/codex-home`
+run:
+
+```bash
+cd rusty-pinch/deploy/container
+sudo chown -R "$USER":"$USER" ./state
+```
+
+Then rebuild:
+
+```bash
+docker-compose -f docker-compose.rpi.yml build --no-cache rusty-pinch-telegram
+```
+
 ## Optional: Codex integration in container
 
 Host Rust installation is not required. The image build compiles Rust in a builder stage.
