@@ -810,13 +810,18 @@ Done:
   - `cargo fmt --all` passed
   - `cargo test` passed (`93` unit tests + integration tests all green)
   - `docker compose config` validation could not run in this workspace (docker binary unavailable).
+- Commit + push checkpoint (2026-02-19):
+  - Commit: `97f9172 feat(codex): align cli defaults and add container auto-login bootstrap`
+  - Branch: `feat/foundation-isolated-20260219`
+  - Push: `origin/feat/foundation-isolated-20260219` updated from `524a4ff` to `97f9172`
+  - Working tree after push: clean
 
 Now:
-- User requested immediate commit + push of current Codex compatibility + auto-login bootstrap changes.
+- Awaiting user pull/test confirmation on Raspberry Pi for Codex-in-container auto-login workflow.
 
 Next:
-- Commit and push auto-login bootstrap changes on active branch.
 - Optional hardening follow-up: add explicit `codex auth-status` app command to expose login mode/state directly from Rusty Pinch CLI.
+- Optional follow-up: provide PR/merge guidance for `feat/foundation-isolated-20260219` if user wants direct main update.
 
 Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: zero-touch ChatGPT OAuth in headless containers may still require initial device-auth completion unless auth material is pre-seeded.
