@@ -739,25 +739,99 @@ Done:
   - Checked out local `main` tracking `origin/main`.
   - Reapplied local `rusty-pinch` foundation snapshot onto standalone repo working tree.
   - Result: `git status` in standalone repo contains only `rusty-pinch` project files; no parent `picoclaw` paths are tracked or pushable from this repo.
+- Isolated repo push checkpoint:
+  - Ran validation in standalone repo:
+    - `cargo test` passed (`93` unit tests + integration tests all green).
+  - Created isolated publish branch:
+    - `feat/foundation-isolated-20260219`
+  - Committed foundation/hardening delta:
+    - `524a4ff feat: deliver AI foundation and self-evolution safety hardening`
+  - Successfully pushed isolated branch to `origin`.
+  - GitHub PR URL emitted by remote:
+    - `https://github.com/fred-vu/rusty-pinch/pull/new/feat/foundation-isolated-20260219`
+- User runtime clarification + integration diagnostics (2026-02-19):
+  - User deploys Raspberry Pi with Docker Compose service `rusty-pinch-telegram` only; Rust toolchain is not installed on Pi.
+  - Verified container runtime image (`deploy/container/Dockerfile`) currently packages only `rusty-pinch` binary and does not install Codex CLI.
+  - Reproduced local WSL Codex generation failure with current defaults:
+    - `cargo run -- codex generate --prompt "ping" --purpose "smoke"`
+    - failure: Codex CLI rejects `--prompt` (`unexpected argument '--prompt'`)
+  - Verified installed Codex CLI behavior:
+    - supports `codex exec [PROMPT]` for non-interactive usage
+    - current defaults in `.env.example` (`RUSTY_PINCH_CODEX_PROMPT_FLAG=--prompt`) are incompatible with this CLI version
+  - Verified auth behavior in clean home:
+    - `codex exec` without prior login fails with `401 Unauthorized`
+    - `codex login --with-api-key` followed by `codex exec` succeeds
+- Implemented Codex integration compatibility updates for current Codex CLI:
+  - Updated codex defaults in `src/config.rs`:
+    - `RUSTY_PINCH_CODEX_CLI_ARGS` default is now `exec` (when unset)
+    - `RUSTY_PINCH_CODEX_PROMPT_FLAG` default is now empty (positional prompt)
+    - `RUSTY_PINCH_CODEX_MODEL` no longer falls back to provider model; Codex uses its own CLI default model unless explicitly set
+  - Updated unit test fixture defaults in `src/codex.rs` to `exec` + positional prompt behavior.
+  - Updated env/docs for new invocation contract:
+    - `.env.example`
+    - `README.md`
+    - `deploy/container/rusty-pinch.env.example`
+    - `deploy/container/rusty-pinch.rpi.env.example`
+- Implemented Docker profile support for Codex CLI on Pi:
+  - Added optional Codex CLI install in runtime image via Docker build arg `INSTALL_CODEX_CLI` (`deploy/container/Dockerfile`).
+  - Wired compose build arg pass-through from `RUSTY_PINCH_INSTALL_CODEX_CLI` in:
+    - `deploy/container/docker-compose.example.yml`
+    - `deploy/container/docker-compose.rpi.yml`
+  - Added operator runbook instructions for Codex-in-container setup/bootstrap:
+    - `deploy/container/README.md`
+    - `docs/runbook-raspberry-pi.md`
+- Validation after Codex compatibility/container updates:
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`93` unit tests + integration tests all green)
+  - Smoke verification:
+    - `cargo run -- codex generate --prompt "Reply with exactly: ok" --purpose "smoke"` succeeds with updated Codex env contract (`RUSTY_PINCH_CODEX_CLI_ARGS=exec`, empty `RUSTY_PINCH_CODEX_PROMPT_FLAG`)
+- Implemented container Codex auto-login bootstrap (ChatGPT/API key modes):
+  - Added startup wrapper `deploy/container/entrypoint.sh` and wired it as image entrypoint in `deploy/container/Dockerfile`.
+  - Startup bootstrap behavior:
+    - checks `codex login status` when `RUSTY_PINCH_CODEX_ENABLED=true`
+    - persists login/session material in `CODEX_HOME` (`/var/lib/rusty-pinch/codex-home`)
+    - supports auto-login modes:
+      - `chatgpt`: restore auth from file/base64 if provided, otherwise optional `codex login --device-auth` bootstrap with timeout
+      - `api-key`: `codex login --with-api-key` via configurable key env source
+      - `off`: skip bootstrap
+  - Added Codex-home persistent mounts in compose profiles:
+    - `deploy/container/docker-compose.rpi.yml`
+    - `deploy/container/docker-compose.example.yml`
+  - Added env contract updates for container auto-login in:
+    - `.env.example`
+    - `deploy/container/rusty-pinch.env.example`
+    - `deploy/container/rusty-pinch.rpi.env.example`
+  - Updated operator docs/runbooks:
+    - `deploy/container/README.md`
+    - `docs/runbook-raspberry-pi.md`
+    - `README.md`
+- Validation after auto-login bootstrap changes:
+  - `sh -n deploy/container/entrypoint.sh` passed
+  - `cargo fmt --all` passed
+  - `cargo test` passed (`93` unit tests + integration tests all green)
+  - `docker compose config` validation could not run in this workspace (docker binary unavailable).
+- Commit + push checkpoint (2026-02-19):
+  - Commit: `97f9172 feat(codex): align cli defaults and add container auto-login bootstrap`
+  - Branch: `feat/foundation-isolated-20260219`
+  - Push: `origin/feat/foundation-isolated-20260219` updated from `524a4ff` to `97f9172`
+  - Working tree after push: clean
 
 Now:
-- Standalone `rusty-pinch` repo reorg complete; awaiting user confirmation to commit/push from isolated repo.
+- Awaiting user pull/test confirmation on Raspberry Pi for Codex-in-container auto-login workflow.
 
 Next:
-- Create isolated publish branch inside standalone repo.
-- Commit foundation/hardening delta and push to `origin` (now guaranteed to exclude parent `picoclaw` content).
-- Optionally delete prior branch `feat/rusty-pinch-ai-foundation-20260219`.
+- Optional hardening follow-up: add explicit `codex auth-status` app command to expose login mode/state directly from Rusty Pinch CLI.
+- Optional follow-up: provide PR/merge guidance for `feat/foundation-isolated-20260219` if user wants direct main update.
 
 Open questions (UNCONFIRMED if needed):
-- Resolved this turn: signed-active-slot bootstrap behavior allows missing marker but enforces signature verification when marker/signature exist and policy is enabled.
-- Resolved this turn: proceed with immediate branch creation and push.
-- UNCONFIRMED: whether to delete previously pushed branch after standalone repo push is confirmed.
+- UNCONFIRMED: zero-touch ChatGPT OAuth in headless containers may still require initial device-auth completion unless auth material is pre-seeded.
 
 Working set (files/ids/commands):
 - `CONTINUITY.md`
 - `docs/production_development_plan AI System Foundation for Rusty Pinch.md`
 - `docs/architecture.md`
 - `docs/product-specification.md`
+- `docs/runbook-raspberry-pi.md`
 - `README.md`
 - `Cargo.toml`
 - `Cargo.lock`
@@ -774,6 +848,13 @@ Working set (files/ids/commands):
 - `.github/workflows/ci.yml`
 - `.github/workflows/release.yml`
 - `.env.example`
+- `deploy/container/Dockerfile`
+- `deploy/container/README.md`
+- `deploy/container/docker-compose.example.yml`
+- `deploy/container/docker-compose.rpi.yml`
+- `deploy/container/entrypoint.sh`
+- `deploy/container/rusty-pinch.env.example`
+- `deploy/container/rusty-pinch.rpi.env.example`
 - `tests/pulse_persistence.rs`
 - `tests/observability.rs`
 - `tests/evolution_guard.rs`

@@ -5,6 +5,8 @@ services:
     build:
       context: ../../..
       dockerfile: rusty-pinch/deploy/container/Dockerfile
+      args:
+        INSTALL_CODEX_CLI: ${RUSTY_PINCH_INSTALL_CODEX_CLI:-false}
     image: ${RUSTY_PINCH_IMAGE:-rusty-pinch:pi-local}
     env_file:
       - ./rusty-pinch.rpi.env
@@ -12,6 +14,7 @@ services:
     volumes:
       - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/data:/var/lib/rusty-pinch/data
       - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/workspace:/var/lib/rusty-pinch/workspace
+      - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/codex-home:/var/lib/rusty-pinch/codex-home
     healthcheck:
       test: ["CMD", "rusty-pinch", "doctor"]
       interval: 60s
@@ -28,6 +31,8 @@ services:
     build:
       context: ../../..
       dockerfile: rusty-pinch/deploy/container/Dockerfile
+      args:
+        INSTALL_CODEX_CLI: ${RUSTY_PINCH_INSTALL_CODEX_CLI:-false}
     image: ${RUSTY_PINCH_IMAGE:-rusty-pinch:pi-local}
     env_file:
       - ./rusty-pinch.rpi.env
@@ -35,6 +40,7 @@ services:
     volumes:
       - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/data:/var/lib/rusty-pinch/data
       - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/workspace:/var/lib/rusty-pinch/workspace
+      - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/codex-home:/var/lib/rusty-pinch/codex-home
     healthcheck:
       test: ["CMD", "rusty-pinch", "doctor"]
       interval: 60s

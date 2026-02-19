@@ -642,8 +642,8 @@ mod tests {
         CodexSettings {
             enabled: true,
             cli_bin: "codex".to_string(),
-            cli_args: vec!["run".to_string()],
-            prompt_flag: "--prompt".to_string(),
+            cli_args: vec!["exec".to_string()],
+            prompt_flag: String::new(),
             model_flag: "--model".to_string(),
             timeout_secs: 10,
             queue_capacity: 16,
