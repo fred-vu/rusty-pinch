@@ -108,3 +108,70 @@ fn app_process_turn_persists_history() {
         .expect("session history");
     assert!(history.contains("hello"));
 }
+
+#[test]
+fn settings_default_provider_is_codex() {
+    let _guard = ENV_LOCK.lock().expect("lock env");
+    reset_rusty_env();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let data_dir = temp.path().join("data");
+    let workspace_dir = temp.path().join("workspace");
+
+    fs::write(
+        temp.path().join(".env"),
+        format!(
+            "RUSTY_PINCH_DATA_DIR={}\nRUSTY_PINCH_WORKSPACE={}\n",
+            data_dir.display(),
+            workspace_dir.display()
+        ),
+    )
+    .expect("write env");
+
+    std::env::set_var(
+        "RUSTY_PINCH_ENV_FILE",
+        temp.path().join(".env").display().to_string(),
+    );
+
+    let settings = Settings::load().expect("load settings");
+    assert_eq!(settings.provider, "codex");
+    assert_eq!(settings.model, "gpt-5-codex");
+    assert!(settings.codex.enabled);
+}
+
+#[test]
+fn app_process_turn_supports_codex_provider_path() {
+    let _guard = ENV_LOCK.lock().expect("lock env");
+    reset_rusty_env();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let data_dir = temp.path().join("data");
+    let workspace_dir = temp.path().join("workspace");
+
+    fs::write(
+        temp.path().join(".env"),
+        format!(
+            "RUSTY_PINCH_PROVIDER=codex\nRUSTY_PINCH_MODEL=gpt-5-codex\nRUSTY_PINCH_DATA_DIR={}\nRUSTY_PINCH_WORKSPACE={}\nRUSTY_PINCH_CODEX_ENABLED=true\nRUSTY_PINCH_CODEX_CLI_BIN=echo\nRUSTY_PINCH_CODEX_CLI_ARGS=\"exec --skip-git-repo-check\"\nRUSTY_PINCH_CODEX_PROMPT_FLAG=\nRUSTY_PINCH_CODEX_MODEL_FLAG=--model\nRUSTY_PINCH_CODEX_MODEL=gpt-5-codex\nRUSTY_PINCH_CODEX_HEALTHCHECK_ARGS=--version\n",
+            data_dir.display(),
+            workspace_dir.display()
+        ),
+    )
+    .expect("write env");
+
+    std::env::set_var(
+        "RUSTY_PINCH_ENV_FILE",
+        temp.path().join(".env").display().to_string(),
+    );
+
+    let settings = Settings::load().expect("load settings");
+    let mut app = RustyPinchApp::new(settings).expect("new app");
+
+    let response = app
+        .process_turn("codex-provider-session", "hello-codex-route")
+        .expect("process turn");
+
+    assert!(response.contains("hello-codex-route"));
+
+    let history = app
+        .session_history_json("codex-provider-session")
+        .expect("session history");
+    assert!(history.contains("hello-codex-route"));
+}

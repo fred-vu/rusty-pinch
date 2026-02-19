@@ -81,6 +81,12 @@ Expected:
 3. Storage/permission failures:
 - verify write access for data/workspace/telemetry paths.
 
+4. Codex login lost after container recreate:
+- symptom: `codex login status` shows `Not logged in` and Codex tasks fail.
+- recovery:
+  - `docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth`
+  - `docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status`
+
 ## Release gate recommendation
 
 Run one command before production rollout:

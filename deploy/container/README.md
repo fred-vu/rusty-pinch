@@ -71,11 +71,13 @@ Then configure runtime env in `rusty-pinch.rpi.env`:
 
 - `RUSTY_PINCH_CODEX_ENABLED=true`
 - `RUSTY_PINCH_CODEX_CLI_BIN=codex`
-- `RUSTY_PINCH_CODEX_CLI_ARGS=exec`
+- `RUSTY_PINCH_CODEX_CLI_ARGS="exec --skip-git-repo-check"`
 - `RUSTY_PINCH_CODEX_PROMPT_FLAG=`
 - `RUSTY_PINCH_CODEX_AUTO_LOGIN=true`
 - `RUSTY_PINCH_CODEX_AUTO_LOGIN_MODE=chatgpt`
 - `RUSTY_PINCH_CODEX_CHATGPT_DEVICE_AUTH=true`
+
+`--skip-git-repo-check` is required because the runtime workdir in this image is not a git repository.
 
 Optional account/env wiring:
 
@@ -88,11 +90,19 @@ Auth bootstrap behavior:
 - login state is persisted in mounted `codex-home` volume
 - when mode is `chatgpt`, entrypoint runs `codex login --device-auth` if session is missing
 - when mode is `api-key`, entrypoint runs `codex login --with-api-key` using `RUSTY_PINCH_CODEX_AUTO_LOGIN_API_KEY_ENV` (default `RUSTY_PINCH_OPENAI_API_KEY`)
+- in some Raspberry Pi deployments, recreate/restart may still lose active ChatGPT session and require manual login again
 
 Manual fallback command:
 
 ```bash
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth
+```
+
+If session is lost after restart/recreate, rerun:
+
+```bash
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
 ```
 
 Smoke-check from running worker:

@@ -155,18 +155,21 @@ Use one of these approaches:
 RUSTY_PINCH_ENV_FILE=/path/to/.env cargo run -- doctor
 ```
 
-Recommended `.env` for real provider call:
+Recommended `.env` for default Codex provider call:
 
 ```dotenv
-RUSTY_PINCH_PROVIDER=openrouter
-RUSTY_PINCH_MODEL=openrouter/qwen/qwen3-coder
-RUSTY_PINCH_OPENROUTER_API_KEY=sk-or-v1-...
+RUSTY_PINCH_PROVIDER=codex
+RUSTY_PINCH_MODEL=gpt-5-codex
+RUSTY_PINCH_CODEX_ENABLED=true
+RUSTY_PINCH_CODEX_CLI_BIN=codex
+RUSTY_PINCH_CODEX_CLI_ARGS="exec --skip-git-repo-check"
 RUSTY_PINCH_REQUEST_RETRIES=2
 ```
 
 ## Expected Signals
 
-- `doctor` reports `api_key_loaded: true` for remote providers.
+- `doctor` reports `codex_enabled: true` when running with `RUSTY_PINCH_PROVIDER=codex`.
+- `doctor` reports `api_key_loaded: true` for OpenAI-compatible providers.
 - `doctor` reports non-empty `api_base` for OpenAI-compatible providers.
 - `doctor` reports resolved `telemetry_file` path.
 - transient provider failures (`429`/`5xx`) are retried based on retry env settings.

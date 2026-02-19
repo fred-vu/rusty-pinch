@@ -21,7 +21,7 @@ Canonical source:
 Rusty Pinch is a standalone Rust runtime for assistant workflows with:
 
 - env-first configuration
-- OpenAI-compatible provider calls (`openrouter`, `openai`, `groq`, `compatible`) and `local` mode
+- provider modes: `codex` (default), OpenAI-compatible (`openrouter`, `openai`, `groq`, `compatible`), and `local` mode
 - append-only session persistence (`jsonl`)
 - deterministic local tool execution (`/tool ...`)
 - channel workers (Telegram long polling, WhatsApp bridge websocket)
@@ -79,7 +79,7 @@ FR-02 Session persistence
 
 FR-03 Provider runtime
 
-- Support OpenAI-compatible chat completion APIs with retry/backoff policy.
+- Support `codex` provider runtime (default) and OpenAI-compatible chat completion APIs with retry/backoff policy.
 - Emit one structured `event=turn` record per request with `request_id`, status, latency, and attempts.
 
 FR-04 Deterministic local tools

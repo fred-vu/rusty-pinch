@@ -10,7 +10,7 @@ Rusty Pinch is a clean, standalone Rust runtime package for the assistant stack.
 
 - Rust CLI runtime: `rusty-pinch`
 - Env-first configuration with strict `.env` support
-- OpenAI-compatible provider calls (`openrouter`, `openai`, `groq`, `compatible`) and `local` mode
+- Provider modes: `codex` (default), OpenAI-compatible (`openrouter`, `openai`, `groq`, `compatible`), and `local`
 - Append-only session storage (`jsonl`)
 - Deterministic local tool path (`/tool ...`) with safety guardrails
 - Native channel listeners: Telegram long polling and WhatsApp bridge websocket
@@ -45,10 +45,9 @@ RUSTY_PINCH_PROVIDER=local cargo run -- run --session demo --message "hello"
 cargo run -- stats
 ```
 
-Remote provider run (OpenRouter example):
+Codex provider run (default):
 
 ```bash
-# set key in .env first
 cargo run -- run --session demo --message "say hi in one line"
 ```
 
@@ -139,7 +138,7 @@ Primary variables:
 - `RUSTY_PINCH_ENV_FILE` (optional explicit `.env` file path)
 - `RUSTY_PINCH_CODEX_ENABLED`
 - `RUSTY_PINCH_CODEX_CLI_BIN`
-- `RUSTY_PINCH_CODEX_CLI_ARGS` (default `exec`)
+- `RUSTY_PINCH_CODEX_CLI_ARGS` (default `exec --skip-git-repo-check` to support non-git container runtimes)
 - `RUSTY_PINCH_CODEX_PROMPT_FLAG` (default empty/positional prompt)
 - `RUSTY_PINCH_CODEX_MODEL_FLAG` (default `--model`)
 - `RUSTY_PINCH_CODEX_MODEL` (optional explicit Codex model; defaults to Codex CLI default when unset)
@@ -304,6 +303,10 @@ docker-compose -f docker-compose.rpi.yml build rusty-pinch-telegram
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex --version
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
 ```
+
+For container runtimes, set `RUSTY_PINCH_CODEX_CLI_ARGS="exec --skip-git-repo-check"` to avoid Codex git-trust checks on non-repo workdirs.
+If Codex session is lost after worker restart/recreate, run:
+`docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth`.
 
 If turn logs show `Failed to authenticate request with Clerk`, review key envs in
 `rusty-pinch.rpi.env` and recreate the worker:

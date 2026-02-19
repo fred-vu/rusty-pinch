@@ -107,7 +107,7 @@ impl Settings {
         load_dotenv()?;
 
         let provider = env::var("RUSTY_PINCH_PROVIDER")
-            .unwrap_or_else(|_| "openrouter".to_string())
+            .unwrap_or_else(|_| "codex".to_string())
             .trim()
             .to_lowercase();
 
@@ -179,7 +179,7 @@ impl Settings {
             },
         };
 
-        let codex = load_codex_settings();
+        let codex = load_codex_settings(&provider, &model);
         let pulse = load_pulse_settings();
         let evolution = load_evolution_settings();
 
@@ -203,7 +203,8 @@ impl Settings {
     }
 
     pub fn doctor_report(&self) -> DoctorReport {
-        let provider_requires_key = !matches!(self.provider.as_str(), "local" | "offline");
+        let provider_requires_key =
+            !matches!(self.provider.as_str(), "local" | "offline" | "codex");
         let provider_requires_base = matches!(
             self.provider.as_str(),
             "openrouter" | "openai" | "groq" | "vllm" | "compatible"
@@ -264,6 +265,10 @@ impl Settings {
         }
         if self.codex.enabled && self.codex.cli_bin.trim().is_empty() {
             warnings.push("Codex enabled but RUSTY_PINCH_CODEX_CLI_BIN is empty".to_string());
+        }
+        if self.provider == "codex" && !self.codex.enabled {
+            warnings
+                .push("RUSTY_PINCH_PROVIDER=codex but RUSTY_PINCH_CODEX_ENABLED=false".to_string());
         }
         if self.evolution.require_manifest_signature
             && self.evolution.manifest_signing_keys.is_empty()
@@ -543,6 +548,7 @@ pub struct DoctorReport {
 
 fn default_model(provider: &str) -> &'static str {
     match provider {
+        "codex" => "gpt-5-codex",
         "openai" => "gpt-4o-mini",
         "anthropic" => "claude-3-5-sonnet-latest",
         _ => "openrouter/qwen/qwen3-coder",
@@ -627,8 +633,8 @@ fn resolve_api_base(provider: &str) -> Option<String> {
     }
 }
 
-fn load_codex_settings() -> CodexSettings {
-    let enabled = read_bool_env("RUSTY_PINCH_CODEX_ENABLED", false);
+fn load_codex_settings(provider: &str, provider_model: &str) -> CodexSettings {
+    let enabled = read_bool_env("RUSTY_PINCH_CODEX_ENABLED", true);
     let cli_bin = env::var("RUSTY_PINCH_CODEX_CLI_BIN")
         .unwrap_or_else(|_| "codex".to_string())
         .trim()
@@ -636,7 +642,7 @@ fn load_codex_settings() -> CodexSettings {
     let cli_args = if env::var("RUSTY_PINCH_CODEX_CLI_ARGS").is_ok() {
         read_args_env("RUSTY_PINCH_CODEX_CLI_ARGS")
     } else {
-        vec!["exec".to_string()]
+        vec!["exec".to_string(), "--skip-git-repo-check".to_string()]
     };
     let prompt_flag = env::var("RUSTY_PINCH_CODEX_PROMPT_FLAG")
         .unwrap_or_default()
@@ -661,7 +667,13 @@ fn load_codex_settings() -> CodexSettings {
             values
         }
     };
-    let default_model = read_non_empty_env("RUSTY_PINCH_CODEX_MODEL");
+    let default_model = read_non_empty_env("RUSTY_PINCH_CODEX_MODEL").or_else(|| {
+        if provider == "codex" {
+            Some(provider_model.trim().to_string()).filter(|value| !value.is_empty())
+        } else {
+            None
+        }
+    });
     let accounts = read_codex_accounts();
 
     CodexSettings {
