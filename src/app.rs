@@ -52,6 +52,25 @@ impl RustyPinchApp {
         let sessions = SessionStore::new(settings.data_dir.join("sessions"))?;
         let mut telemetry = TelemetryStore::new(settings.telemetry_file.clone())?;
         let skills = SkillManager::new(settings.workspace.join("skills"))?;
+        match skills.sync_from_assets(PathBuf::from("assets").join("skills")) {
+            Ok(copied) => {
+                if copied > 0 {
+                    eprintln!(
+                        "{{\"event\":\"skills_assets_synced\",\"copied\":{},\"source\":\"assets/skills\",\"destination\":{}}}",
+                        copied,
+                        serde_json::to_string(&skills.skills_dir().display().to_string())
+                            .unwrap_or_else(|_| "\"<encode-error>\"".to_string())
+                    );
+                }
+            }
+            Err(err) => {
+                eprintln!(
+                    "{{\"event\":\"skills_assets_sync_error\",\"message\":{}}}",
+                    serde_json::to_string(&err.to_string())
+                        .unwrap_or_else(|_| "\"<encode-error>\"".to_string())
+                );
+            }
+        }
         let evolution = EvolutionManager::new(&settings.workspace)?
             .with_lock_policy(
                 settings

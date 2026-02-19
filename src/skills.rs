@@ -57,6 +57,56 @@ impl SkillManager {
         &self.skills_dir
     }
 
+    pub fn sync_from_assets(&self, assets_dir: impl AsRef<Path>) -> Result<usize> {
+        let assets_dir = assets_dir.as_ref();
+        if !assets_dir.exists() {
+            return Ok(0);
+        }
+        if !assets_dir.is_dir() {
+            return Err(anyhow!(
+                "assets skills path is not a directory: {}",
+                assets_dir.display()
+            ));
+        }
+
+        let mut copied = 0usize;
+        for entry in fs::read_dir(assets_dir)
+            .with_context(|| format!("failed reading assets skills dir {}", assets_dir.display()))?
+        {
+            let entry = entry.with_context(|| {
+                format!(
+                    "failed reading entry in assets skills dir {}",
+                    assets_dir.display()
+                )
+            })?;
+            let source = entry.path();
+            if source.extension().and_then(|v| v.to_str()) != Some("rhai") {
+                continue;
+            }
+
+            let stem = source
+                .file_stem()
+                .and_then(|v| v.to_str())
+                .ok_or_else(|| anyhow!("invalid asset skill filename '{}'", source.display()))?;
+            let skill_name = normalize_skill_name(stem)?;
+            let destination = self.skills_dir.join(format!("{}.rhai", skill_name));
+            if destination.exists() {
+                continue;
+            }
+
+            fs::copy(&source, &destination).with_context(|| {
+                format!(
+                    "failed copying asset skill '{}' to '{}'",
+                    source.display(),
+                    destination.display()
+                )
+            })?;
+            copied = copied.saturating_add(1);
+        }
+
+        Ok(copied)
+    }
+
     pub fn list_skills(&self) -> Result<Vec<SkillSpec>> {
         let mut skills = Vec::new();
         for entry in fs::read_dir(&self.skills_dir)
@@ -458,5 +508,68 @@ fn main() {
             .run("blocked_http", "")
             .expect_err("localhost should be blocked");
         assert!(err.to_string().contains("blocked"));
+    }
+
+    #[test]
+    fn sync_from_assets_copies_missing_skills() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let workspace_skills = dir.path().join("workspace-skills");
+        let assets_skills = dir.path().join("assets-skills");
+        std::fs::create_dir_all(&assets_skills).expect("create assets dir");
+        std::fs::write(
+            assets_skills.join("weather.rhai"),
+            r#"
+fn main() {
+    return "weather-ok";
+}
+"#,
+        )
+        .expect("write asset weather");
+
+        let manager = SkillManager::new(&workspace_skills).expect("manager");
+        let copied = manager
+            .sync_from_assets(&assets_skills)
+            .expect("sync from assets");
+        assert_eq!(copied, 1);
+
+        let out = manager.run("weather", "").expect("run weather");
+        assert_eq!(out, "weather-ok");
+    }
+
+    #[test]
+    fn sync_from_assets_does_not_overwrite_existing_workspace_skill() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let workspace_skills = dir.path().join("workspace-skills");
+        let assets_skills = dir.path().join("assets-skills");
+        std::fs::create_dir_all(&assets_skills).expect("create assets dir");
+        std::fs::write(
+            assets_skills.join("weather.rhai"),
+            r#"
+fn main() {
+    return "from-assets";
+}
+"#,
+        )
+        .expect("write asset weather");
+
+        let manager = SkillManager::new(&workspace_skills).expect("manager");
+        manager
+            .write_skill(
+                "weather",
+                r#"
+fn main() {
+    return "from-workspace";
+}
+"#,
+            )
+            .expect("write workspace weather");
+
+        let copied = manager
+            .sync_from_assets(&assets_skills)
+            .expect("sync from assets");
+        assert_eq!(copied, 0);
+
+        let out = manager.run("weather", "").expect("run weather");
+        assert_eq!(out, "from-workspace");
     }
 }

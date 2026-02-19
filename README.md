@@ -96,6 +96,19 @@ Core commands:
 - `cargo run -- evolution force-unlock --confirm`: force-remove evolution lock file
 - Evolution stage/apply operations hold an exclusive lock at `${RUSTY_PINCH_WORKSPACE}/updates/evolution.lock` to prevent concurrent rollout mutations.
 
+Skill bootstrap behavior:
+
+- Tracked starter skills under `assets/skills/*.rhai` are copied to `${RUSTY_PINCH_WORKSPACE}/skills` on app startup when the destination skill file is missing.
+- Workspace skills are never overwritten by asset sync.
+- Included starter skill: `weather` (`assets/skills/weather.rhai`).
+
+Weather skill args:
+
+- `Hanoi` -> current weather summary
+- `forecast|Hanoi` -> forecast output
+- `rain|Hanoi` -> precipitation-focused line
+- `detail|Hanoi` -> detailed current conditions
+
 Tool commands:
 
 - `cargo run -- tools list`
