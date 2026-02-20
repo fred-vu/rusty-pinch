@@ -98,10 +98,16 @@ Telemetry stores aggregate counters and the latest turn record for cross-process
 - Provider path captures:
   - `attempts`
   - `latency_ms` (end-to-end, including retry backoff)
+  - OTLP `provider_latency_seconds` histogram + `tokens_used` counter
 - Tool path captures:
   - `tool_name`
   - command/response size counters
+  - OTLP `tool_executions_total` counter by tool/source/status
 - One structured JSON log line is emitted per turn (`event=turn`).
+- OpenTelemetry/tracing pipeline:
+  - startup initializes OTLP exporter (`OTEL_EXPORTER_OTLP_ENDPOINT`, default `http://localhost:4317`)
+  - provider/tool execution spans carry `request_id` and `session_id`
+  - exporter runs in non-blocking background runtime and degrades gracefully if endpoint is unavailable
 - `stats` endpoint includes persisted telemetry counters and `last_turn`.
 - Telemetry snapshot also captures subsystem status:
   - `codex`: account health + queue depth/threshold
@@ -154,6 +160,7 @@ Before promoting this package to mainline runtime role:
 - container profile:
   - Dockerfile and compose example under `rusty-pinch/deploy/container/`
   - Raspberry Pi profile consumes prebuilt GHCR image with Watchtower auto-update
+  - optional `alloy` service receives OTLP (`:4317` gRPC, `:4318` HTTP) and forwards to Grafana Cloud using env-injected credentials
   - optional WhatsApp worker via compose profile
 
 ## CI/CD Automation

@@ -15,6 +15,7 @@ use crate::evolution::{
     BlueGreenApplyReport, ChecksumManifestProvenance, EvolutionActiveSlotIntegrityReport,
     EvolutionApplyFailureCircuitReport, EvolutionManager, SkillEvolutionReport,
 };
+use crate::observability;
 use crate::prompt::PromptBuilder;
 use crate::provider;
 use crate::pulse::{OodaObservation, PulseAction, PulseRuntime};
@@ -183,7 +184,8 @@ impl RustyPinchApp {
             let tool_command = format_tool_command(&tool_name, &tool_call.args);
             let user_chars = tool_command.chars().count();
 
-            let result = self.execute_tool_turn(session_id, &tool_name, &tool_call.args);
+            let result =
+                self.execute_tool_turn(session_id, &tool_name, &tool_call.args, &request_id);
             return match result {
                 Ok(response) => {
                     self.record_turn(TurnRecord {
@@ -285,12 +287,15 @@ impl RustyPinchApp {
                 timestamp: Utc::now().to_rfc3339(),
             });
 
-            let tool_result =
-                match self.execute_tool_for_assistant(session_id, &tool_call.name, &tool_call.args)
-                {
-                    Ok(output) => output,
-                    Err(err) => format!("[tool:{} error] {}", tool_call.name.trim(), err),
-                };
+            let tool_result = match self.execute_tool_for_assistant(
+                session_id,
+                &tool_call.name,
+                &tool_call.args,
+                &request_id,
+            ) {
+                Ok(output) => output,
+                Err(err) => format!("[tool:{} error] {}", tool_call.name.trim(), err),
+            };
             assistant_tool_context_messages.push(Message {
                 role: "system".to_string(),
                 content: format!(
@@ -402,12 +407,26 @@ impl RustyPinchApp {
         Ok(response)
     }
 
-    fn execute_tool_turn(&mut self, session_id: &str, name: &str, args: &str) -> Result<String> {
+    fn execute_tool_turn(
+        &mut self,
+        session_id: &str,
+        name: &str,
+        args: &str,
+        request_id: &str,
+    ) -> Result<String> {
         if name.trim().is_empty() {
             return Err(anyhow!(
                 "tool command missing name. usage: /tool <name> [args]"
             ));
         }
+        let _span = tracing::info_span!(
+            "tool.execute",
+            request_id = request_id,
+            session_id = session_id,
+            tool = name.trim(),
+            source = "user"
+        )
+        .entered();
 
         let ctx = ToolContext {
             session_id,
@@ -416,7 +435,16 @@ impl RustyPinchApp {
             model: &self.settings.model,
             skills: Some(&self.skills),
         };
-        let output = self.tools.execute(name, &ctx, args)?;
+        let output = match self.tools.execute(name, &ctx, args) {
+            Ok(output) => {
+                observability::record_tool_execution(name, "user", "ok");
+                output
+            }
+            Err(err) => {
+                observability::record_tool_execution(name, "user", "error");
+                return Err(err);
+            }
+        };
         let response = format!("[tool:{}]\n{}", name.trim(), output);
         let user_command = format_tool_command(name, args);
 
@@ -441,12 +469,21 @@ impl RustyPinchApp {
         session_id: &str,
         name: &str,
         args: &str,
+        request_id: &str,
     ) -> Result<String> {
         if name.trim().is_empty() {
             return Err(anyhow!(
                 "assistant tool command missing name. usage: /tool <name> [args]"
             ));
         }
+        let _span = tracing::info_span!(
+            "tool.execute",
+            request_id = request_id,
+            session_id = session_id,
+            tool = name.trim(),
+            source = "assistant"
+        )
+        .entered();
 
         let ctx = ToolContext {
             session_id,
@@ -455,7 +492,16 @@ impl RustyPinchApp {
             model: &self.settings.model,
             skills: Some(&self.skills),
         };
-        let output = self.tools.execute(name, &ctx, args)?;
+        let output = match self.tools.execute(name, &ctx, args) {
+            Ok(output) => {
+                observability::record_tool_execution(name, "assistant", "ok");
+                output
+            }
+            Err(err) => {
+                observability::record_tool_execution(name, "assistant", "error");
+                return Err(err);
+            }
+        };
 
         let _ = self
             .bus
@@ -550,9 +596,19 @@ impl RustyPinchApp {
             history,
             prompt,
             user_input,
+            request_id,
+            session_id,
         ) {
             Ok(response) => response,
             Err(err) => {
+                observability::record_provider_metrics(
+                    &self.settings.provider,
+                    &self.settings.model,
+                    "error",
+                    err.metrics.attempts,
+                    err.metrics.latency_ms,
+                    0,
+                );
                 let message = err.to_string();
                 self.record_turn(TurnRecord {
                     timestamp: Utc::now().to_rfc3339(),
@@ -572,6 +628,14 @@ impl RustyPinchApp {
                 return Err(anyhow!("request_id={}: {}", request_id, message));
             }
         };
+        observability::record_provider_metrics(
+            &self.settings.provider,
+            &self.settings.model,
+            "ok",
+            completion.metrics.attempts,
+            completion.metrics.latency_ms,
+            completion.metrics.tokens_used,
+        );
         Ok((
             completion.content,
             Some(completion.metrics.attempts),

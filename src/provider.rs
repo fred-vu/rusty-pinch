@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
 use serde_json::{json, Value};
+use tracing::{debug, instrument, warn};
 
 use crate::config::Settings;
 use crate::session::Message;
@@ -15,6 +16,7 @@ const DEFAULT_SYSTEM_IDENTITY: &str = "You are Rusty Pinch, a pragmatic Rust-fir
 pub struct ProviderMetrics {
     pub attempts: u32,
     pub latency_ms: u64,
+    pub tokens_used: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +37,7 @@ impl ProviderFailure {
             metrics: ProviderMetrics {
                 attempts,
                 latency_ms,
+                tokens_used: 0,
             },
             message: message.into(),
         }
@@ -58,17 +61,38 @@ pub fn chat_completion(
     history: &[Message],
     session_prompt: &str,
     user_input: &str,
+    request_id: &str,
+    session_id: &str,
 ) -> Result<String> {
-    let response = chat_completion_with_metrics(settings, history, session_prompt, user_input)
-        .map_err(|err| anyhow!("{}", err))?;
+    let response = chat_completion_with_metrics(
+        settings,
+        history,
+        session_prompt,
+        user_input,
+        request_id,
+        session_id,
+    )
+    .map_err(|err| anyhow!("{}", err))?;
     Ok(response.content)
 }
 
+#[instrument(
+    name = "provider.chat_completion",
+    skip(settings, history, session_prompt, user_input),
+    fields(
+        request_id = request_id,
+        session_id = session_id,
+        provider = %settings.provider,
+        model = %settings.model
+    )
+)]
 pub fn chat_completion_with_metrics(
     settings: &Settings,
     history: &[Message],
     session_prompt: &str,
     user_input: &str,
+    request_id: &str,
+    session_id: &str,
 ) -> std::result::Result<ProviderResponse, ProviderFailure> {
     let started = Instant::now();
 
@@ -78,6 +102,7 @@ pub fn chat_completion_with_metrics(
             metrics: ProviderMetrics {
                 attempts: 0,
                 latency_ms: elapsed_ms(started),
+                tokens_used: 0,
             },
         });
     }
@@ -121,11 +146,19 @@ pub fn chat_completion_with_metrics(
         let attempt_no = attempt + 1;
         match call_provider_once(settings, api_key, &endpoint, &body) {
             Ok(response) => {
+                let elapsed = elapsed_ms(started);
+                debug!(
+                    attempt = attempt_no,
+                    latency_ms = elapsed,
+                    tokens_used = response.tokens_used,
+                    "provider call succeeded"
+                );
                 return Ok(ProviderResponse {
-                    content: response,
+                    content: response.content,
                     metrics: ProviderMetrics {
                         attempts: attempt_no,
-                        latency_ms: elapsed_ms(started),
+                        latency_ms: elapsed,
+                        tokens_used: response.tokens_used,
                     },
                 });
             }
@@ -136,6 +169,13 @@ pub fn chat_completion_with_metrics(
                         settings.retry_backoff_ms,
                         settings.retry_max_backoff_ms,
                         attempt,
+                    );
+                    warn!(
+                        attempt = attempt_no,
+                        total_attempts = total_attempts,
+                        delay_ms = delay_ms,
+                        error = %err,
+                        "provider transient failure, retrying"
                     );
                     last_error = Some(err);
                     thread::sleep(Duration::from_millis(delay_ms));
@@ -197,6 +237,11 @@ struct ProviderCallError {
     message: String,
 }
 
+struct ProviderCallSuccess {
+    content: String,
+    tokens_used: u64,
+}
+
 impl ProviderCallError {
     fn transient(message: impl Into<String>) -> Self {
         Self {
@@ -228,7 +273,7 @@ fn call_provider_once(
     api_key: &str,
     endpoint: &str,
     body: &str,
-) -> std::result::Result<String, ProviderCallError> {
+) -> std::result::Result<ProviderCallSuccess, ProviderCallError> {
     let mut command = Command::new("curl");
     command
         .arg("-sS")
@@ -435,7 +480,7 @@ fn build_chat_payload(
     })
 }
 
-fn parse_chat_response(raw: &str) -> std::result::Result<String, ProviderCallError> {
+fn parse_chat_response(raw: &str) -> std::result::Result<ProviderCallSuccess, ProviderCallError> {
     let data: Value = serde_json::from_str(raw)
         .map_err(|_| ProviderCallError::permanent("failed parsing provider response json"))?;
 
@@ -470,8 +515,22 @@ fn parse_chat_response(raw: &str) -> std::result::Result<String, ProviderCallErr
         ProviderCallError::permanent("provider response missing choices[0].message.content")
     })?;
 
-    extract_text_content(content)
-        .ok_or_else(|| ProviderCallError::permanent("provider response content is empty"))
+    let parsed = extract_text_content(content)
+        .ok_or_else(|| ProviderCallError::permanent("provider response content is empty"))?;
+    let tokens_used = data
+        .get("usage")
+        .and_then(|usage| {
+            usage
+                .get("total_tokens")
+                .and_then(Value::as_u64)
+                .or_else(|| usage.get("prompt_tokens").and_then(Value::as_u64))
+        })
+        .unwrap_or(0);
+
+    Ok(ProviderCallSuccess {
+        content: parsed,
+        tokens_used,
+    })
 }
 
 fn extract_text_content(content: &Value) -> Option<String> {
@@ -518,7 +577,8 @@ mod tests {
             ]
         }"#;
         let out = parse_chat_response(raw).expect("parse should succeed");
-        assert_eq!(out, "hello world");
+        assert_eq!(out.content, "hello world");
+        assert_eq!(out.tokens_used, 0);
     }
 
     #[test]
@@ -529,7 +589,23 @@ mod tests {
             ]
         }"#;
         let out = parse_chat_response(raw).expect("parse should succeed");
-        assert_eq!(out, "line one\nline two");
+        assert_eq!(out.content, "line one\nline two");
+    }
+
+    #[test]
+    fn parse_chat_response_extracts_usage_total_tokens() {
+        let raw = r#"{
+            "choices": [
+                {"message": {"content": "ok"}}
+            ],
+            "usage": {
+                "prompt_tokens": 7,
+                "completion_tokens": 5,
+                "total_tokens": 12
+            }
+        }"#;
+        let out = parse_chat_response(raw).expect("parse should succeed");
+        assert_eq!(out.tokens_used, 12);
     }
 
     #[test]

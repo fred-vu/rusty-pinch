@@ -1284,12 +1284,78 @@ Done:
   - push:
     - published new remote branch `origin/feat/foundation-isolated-20260220`
     - upstream tracking configured for renamed branch.
+- Continuity workflow refresh (2026-02-20):
+  - user updated `AGENTS.md` to require continuity-ledger-first operation.
+  - assistant re-read updated `AGENTS.md` and reloaded `CONTINUITY.md`.
+  - subsequent turns must keep ledger synchronized before/while proceeding.
+- User request update (2026-02-20):
+  - user asked to read `docs/Opentelemetry-grafana.md`.
+- Documentation review (2026-02-20):
+  - read `docs/Opentelemetry-grafana.md`.
+  - document defines 4-phase observability plan:
+    - Rust OTel instrumentation (`tracing` + OTLP exporter + provider/tool metrics).
+    - Grafana Alloy config (`deploy/config/config.alloy`) with env-based secrets.
+    - Raspberry Pi compose integration (`alloy` service + OTEL endpoint wiring).
+    - Grafana Cloud dashboards/alerts for latency, tool usage, and error rates.
+- User execution approval (2026-02-20):
+  - user approved immediate end-to-end implementation and requested no mid-way stop.
+- OTel/Grafana implementation plan locked (2026-02-20):
+  - Rust runtime:
+    - add `tracing` + OpenTelemetry OTLP initialization at startup
+    - instrument provider call path with request/session span fields
+    - export `tokens_used` counter + `provider_latency_seconds` histogram
+    - add per-tool execution counter labeled by tool name/source
+  - Edge deploy:
+    - add `deploy/config/config.alloy`
+    - add `alloy` service to `deploy/container/docker-compose.rpi.yml`
+    - wire `OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317` in env templates
+  - Docs:
+    - update compose/runbook instructions for Grafana Cloud env provisioning and verification steps
+- OTel/Grafana implementation delivered (2026-02-20):
+  - Rust runtime observability:
+    - added `src/observability.rs` and startup init in `src/main.rs`
+    - added OpenTelemetry + tracing deps in `Cargo.toml`/`Cargo.lock`
+    - provider instrumentation in `src/provider.rs`:
+      - `tracing::instrument` around chat completion with `request_id`/`session_id`
+      - usage-token extraction from provider response (`usage.total_tokens`)
+      - provider retry/success/failure trace events
+    - app instrumentation in `src/app.rs`:
+      - provider metrics export calls (`tokens_used`, `provider_latency_seconds`)
+      - tool execution counters for user/assistant tool paths
+      - tool spans with `request_id`/`session_id`
+  - Alloy + compose integration:
+    - added `deploy/config/config.alloy` (OTLP receiver + batch + Grafana Cloud exporter via env auth)
+    - updated compose profiles:
+      - `deploy/container/docker-compose.rpi.yml`
+      - `deploy/container/docker-compose.example.yml`
+      - added `alloy` service and OTLP endpoint wiring (`http://alloy:4317`)
+    - updated env templates:
+      - `.env.example`
+      - `deploy/container/rusty-pinch.env.example`
+      - `deploy/container/rusty-pinch.rpi.env.example`
+  - Documentation updates:
+    - `README.md`
+    - `deploy/container/README.md`
+    - `docs/architecture.md`
+    - `docs/runbook-raspberry-pi.md`
+    - `docs/testing.md`
+    - runbook now includes Grafana Cloud dashboard/alert baseline queries (latency quantiles, tool frequency, provider error-rate >10%/5m alert).
+  - Validation outcomes:
+    - `cargo check` passed
+    - `cargo check --locked` passed
+    - `cargo fmt --all` passed
+    - `cargo test --locked` passed (all unit + integration tests green)
+    - runtime smoke passed with unreachable OTLP endpoint (no crash):
+      - `RUSTY_PINCH_PROVIDER=local OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:1 cargo run -- run --session otel-smoke --message "hello observability"`
+    - compose syntax check command could not run in this workspace because `docker-compose` binary is unavailable.
+- User request update (2026-02-20):
+  - user requested immediate commit + push to GitHub because deployment mode is Raspberry Pi zero-build local.
 
 Now:
-- Branch was renamed to date-based name and pending patch set is committed/pushed.
+- Preparing scoped commit for OTel/Grafana deliverables and pushing branch to origin.
 
 Next:
-- Wait for user validation on local/Pi using branch `feat/foundation-isolated-20260220`.
+- Confirm pushed commit hash/branch and provide Pi zero-build follow-up steps.
 
 Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: preferred execution mode for skill invocation (only explicit user command vs model-autonomous tool loop).
@@ -1326,6 +1392,7 @@ Working set (files/ids/commands):
 - `src/evolution.rs`
 - `src/telemetry.rs`
 - `src/monitor.rs`
+- `src/observability.rs`
 - `.github/workflows/ci.yml`
 - `.github/workflows/release.yml`
 - `.github/workflows/docker-publish.yml`
@@ -1339,6 +1406,8 @@ Working set (files/ids/commands):
 - `deploy/container/entrypoint.sh`
 - `deploy/container/rusty-pinch.env.example`
 - `deploy/container/rusty-pinch.rpi.env.example`
+- `deploy/config/config.alloy`
+- `docs/Opentelemetry-grafana.md`
 - `docs/release.md`
 - `docs/production-healthcheck.md`
 - `docs/zerobuild-local.md`
