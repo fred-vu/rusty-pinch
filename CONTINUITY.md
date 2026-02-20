@@ -867,18 +867,600 @@ Done:
   - `cargo check` passed
   - `cargo fmt --all` passed
   - `cargo test` passed (`93` unit tests + integration tests all green)
+- Commit + push checkpoint (2026-02-19):
+  - Commit: `5d0e8de feat(provider): default to codex and route turns through codex runtime`
+  - Branch: `feat/foundation-isolated-20260219`
+  - Push: `origin/feat/foundation-isolated-20260219` updated from `2933f7f` to `5d0e8de`
+  - Working tree after push: clean
+- Raspberry Pi docker-compose build incident triage (2026-02-19):
+  - User hit build failure on Pi:
+    - `PermissionError: [Errno 13] Permission denied: .../deploy/container/state/codex-home`
+  - Root cause:
+    - legacy compose build context scanned host bind-mount state path, including root-owned `codex-home`.
+  - Implemented container build-context hardening:
+    - `deploy/container/docker-compose.rpi.yml`:
+      - `build.context` changed from `../../..` to `../..`
+      - `build.dockerfile` changed from `rusty-pinch/deploy/container/Dockerfile` to `deploy/container/Dockerfile`
+    - `deploy/container/docker-compose.example.yml`:
+      - same context/dockerfile adjustments
+    - `deploy/container/Dockerfile`:
+      - switched COPY paths from monorepo-style `rusty-pinch/...` to repo-root paths
+    - Added root `.dockerignore` to exclude:
+      - `deploy/container/state`
+      - local env files and `target`
+- Added operator workaround docs for existing permission issue:
+  - `deploy/container/README.md` (state ownership fix + rebuild command)
+- Validation after build-context hardening:
+  - `cargo test --quiet` passed (`93` unit tests + integration tests all green)
+- Commit + push checkpoint (2026-02-19):
+  - Commit: `616d3dc fix(container): narrow build context and ignore local state mounts`
+  - Branch: `feat/foundation-isolated-20260219`
+  - Push: `origin/feat/foundation-isolated-20260219` updated with build-context hardening patch.
+- Raspberry Pi Codex runtime args incident triage (2026-02-19):
+  - User reported `codex generate` failure:
+    - `unexpected argument '--skip-git-repo-check\"'`
+  - User-provided env inspection output:
+    - `RUSTY_PINCH_CODEX_CLI_ARGS=<\"exec -- --skip-git-repo-check\">`
+  - Diagnosis:
+    - env value includes literal quote characters plus an extra `--`, producing malformed Codex CLI argv.
+  - Planned operator fix (no code change):
+    - set `RUSTY_PINCH_CODEX_CLI_ARGS=exec --skip-git-repo-check`
+    - keep `RUSTY_PINCH_CODEX_PROMPT_FLAG=` empty
+    - recreate container and re-check `codex --help` / `codex exec --help`.
+- Raspberry Pi Telegram polling conflict incident (2026-02-19):
+  - User ran:
+    - `docker-compose ... exec rusty-pinch-telegram rusty-pinch channels telegram`
+  - Runtime emitted:
+    - Telegram `getUpdates` error `409 Conflict: terminated by other getUpdates request; make sure that only one bot instance is running`
+  - Diagnosis:
+    - two concurrent long-polling consumers are using the same bot token (`getUpdates`) at the same time.
+    - likely cause in this setup: container main process already runs `channels telegram`, then `docker-compose exec ... channels telegram` started a second poller.
+- New task intake (2026-02-19):
+  - User requested:
+    - inspect external repo `https://github.com/openclaw/openclaw`
+    - learn/adapt the `weather` skill
+    - create `weather.rhai` runnable in current Rusty Pinch skill runtime
+  - Pulled reference skill source:
+    - cloned `openclaw/openclaw` with sparse checkout (`skills` only) at `/tmp/openclaw_repo`
+    - reviewed `/tmp/openclaw_repo/skills/weather/SKILL.md`
+  - Reference behavior identified:
+    - weather fetch pattern uses `wttr.in` (no API key) with modes:
+      - one-line summary
+      - forecast
+      - precipitation/rain-oriented output
+- Implemented Rusty Pinch-compatible weather skill:
+  - Created `workspace/skills/weather.rhai` with `main()` and `main(args)` entrypoints.
+  - Adapted for current Rhai runtime semantics:
+    - string `trim()` is in-place (no return value)
+    - `len()` method used for emptiness checks
+  - Supported args contract:
+    - `<location>` -> current weather summary
+    - `forecast|<location>` -> forecast format
+    - `rain|<location>` -> precipitation-focused line
+    - `detail|<location>` -> detailed current conditions
+  - Validation:
+    - `cargo run -- skills dry-run --name weather` passed
+    - `cargo run -- skills list` shows `weather` skill at `./workspace/skills/weather.rhai`
+    - runtime execution from this environment failed due upstream reachability timeout to `https://wttr.in` (curl code `28`), not Rhai compile/runtime API mismatch.
+- Implemented tracked weather skill bootstrap from assets (2026-02-19):
+  - Added tracked starter skill file:
+    - `assets/skills/weather.rhai`
+  - Extended `SkillManager` in `src/skills.rs`:
+    - `sync_from_assets(assets_dir)` copies missing `*.rhai` skills from assets to workspace skill dir
+    - never overwrites existing workspace skill files
+    - added tests:
+      - `skills::tests::sync_from_assets_copies_missing_skills`
+      - `skills::tests::sync_from_assets_does_not_overwrite_existing_workspace_skill`
+  - Wired app startup in `src/app.rs`:
+    - `RustyPinchApp::new` now syncs from `assets/skills` to `${RUSTY_PINCH_WORKSPACE}/skills`
+    - emits startup events:
+      - `skills_assets_synced` (with copied count)
+      - `skills_assets_sync_error` (non-fatal)
+  - Updated docs:
+    - `README.md` documents asset skill bootstrap behavior and weather skill args contract
+  - Validation after asset bootstrap changes:
+    - `cargo fmt --all` passed
+    - `cargo test skills::tests -- --nocapture` passed
+    - `cargo test --test smoke -- --nocapture` passed
+    - smoke logs confirmed startup copy event when workspace is empty.
+- Added skill-folder documentation for operators (2026-02-19):
+  - New file: `assets/skills/README.md`
+  - Includes:
+    - starter skill sync behavior (`assets/skills` -> `${RUSTY_PINCH_WORKSPACE}/skills`)
+    - weather skill args contract
+    - usage via local `cargo` commands
+    - usage via Raspberry Pi `docker-compose ... exec` commands
+    - operational notes for network timeouts and copy-if-missing update behavior
+- Pre-commit validation for weather/bootstrap/docs delta (2026-02-19):
+  - `cargo test` passed (`95` unit tests + integration tests all green)
+- Commit scope decision for requested push (2026-02-19):
+  - include: `src/app.rs`, `src/skills.rs`, `README.md`, `assets/skills/weather.rhai`, `assets/skills/README.md`, `CONTINUITY.md`
+  - exclude (left local, out of scope): `.env.example`, `deploy/container/rusty-pinch.env.example`, `deploy/container/rusty-pinch.rpi.env.example`, `docs/zeroclaw-comparison.md`
+- Commit + push completed for weather/bootstrap/docs delta (2026-02-19):
+  - commit: `43d4d71 feat(skills): bootstrap weather skill from assets`
+  - branch: `feat/foundation-isolated-20260219`
+  - pushed to: `origin/feat/foundation-isolated-20260219`
+- New direction intake (2026-02-20):
+  - user requested to read `docs/zerobuild-local.md` and continue implementation following that approach.
+- Implemented zero-build edge deployment baseline from `docs/zerobuild-local.md` (2026-02-20):
+  - Added GHCR ARM64 publish workflow:
+    - `.github/workflows/docker-publish.yml`
+    - triggers: `main`, `v*` tags, manual dispatch
+    - buildx + qemu + GHCR login via `GITHUB_TOKEN`
+    - publishes `linux/arm64` image tags (`latest`, tag refs, `sha-*`)
+    - image build arg sets `INSTALL_CODEX_CLI=true`
+  - Refactored Raspberry Pi compose profile to consume prebuilt GHCR image (no local build):
+    - `deploy/container/docker-compose.rpi.yml`
+    - removed `build:` directives
+    - default image: `ghcr.io/fred-vu/rusty-pinch:latest`
+    - added explicit bind mounts:
+      - `./data` -> `/var/lib/rusty-pinch/data`
+      - `./workspace` -> `/var/lib/rusty-pinch/workspace`
+      - `./skills` -> `/var/lib/rusty-pinch/workspace/skills`
+      - `./codex-home` -> `/var/lib/rusty-pinch/codex-home`
+    - added `watchtower` service with rolling restart and interval polling
+  - Hardened container image footprint/build determinism:
+    - `deploy/container/Dockerfile` now uses `cargo build --release --locked`
+    - removed unnecessary runtime copies (`docs`, `.env.example`) from final image
+  - Updated runtime/ops docs for zero-build flow:
+    - `deploy/container/README.md`
+    - `docs/runbook-raspberry-pi.md`
+    - `README.md`
+    - `docs/release.md`
+    - `docs/production-healthcheck.md`
+    - `docs/product-specification.md`
+    - `docs/architecture.md`
+  - Updated ignore rules for new Pi bind-mount directories:
+    - `.dockerignore` and `.gitignore`
+  - Updated entrypoint diagnostic log for missing Codex CLI to reference GHCR prebuilt image path.
+- Validation after zero-build baseline patch:
+  - `cargo test` passed (`95` unit tests + integration tests all green)
+  - `sh -n deploy/container/entrypoint.sh` passed
+  - `docker compose ... config` could not run in this workspace (`docker: command not found`)
+- Commit + push checkpoint for zero-build baseline (2026-02-20):
+  - commit: `c0f0015 feat(deploy): adopt zero-build rpi flow with ghcr and watchtower`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` updated from `43d4d71` to `c0f0015`
+- Commit + push checkpoint for ledger sync (2026-02-20):
+  - commit: `5f31626 docs: update continuity ledger after zero-build push`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` updated from `c0f0015` to `5f31626`
+- New user request (2026-02-20):
+  - provide concrete Raspberry Pi instructions to pull branch `feat/foundation-isolated-20260219`.
+- Incident report from Raspberry Pi (2026-02-20):
+  - `docker-compose -f docker-compose.rpi.yml pull` failed on host running `docker-compose==1.25.0` with:
+    - `Unsupported config option ... 'platform'`
+  - Root cause:
+    - compose v1.25 parser does not support `platform` key in this file format.
+  - Fix implemented:
+    - removed `platform: linux/arm64` from both services in `deploy/container/docker-compose.rpi.yml` to restore compatibility with legacy docker-compose v1.
+- Commit + push checkpoint for compose-v1 compatibility fix (2026-02-20):
+  - commit: `4bccef6 fix(container): remove compose platform key for v1 compatibility`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` updated from `5f31626` to `4bccef6`
+- Raspberry Pi verification update (2026-02-20):
+  - User reported current Pi checkout still at `5f31626` (not yet pulled to `4bccef6`).
+  - `docker-compose -f docker-compose.rpi.yml pull` now fails with GHCR auth error:
+    - `Head "https://ghcr.io/v2/fred-vu/rusty-pinch/manifests/latest": denied`
+  - This indicates registry authorization/visibility issue (not compose schema issue).
+- GHCR auth guidance confirmed from GitHub Docs (2026-02-20):
+  - For GHCR package pulls, recommended token type is Personal Access Token (classic) with `read:packages` scope.
+  - Fine-grained PAT used for git push may not satisfy GHCR package auth in this flow.
+  - `Actions` permission is not required for runtime `docker pull` on Pi.
+- Raspberry Pi GHCR login incident (2026-02-20):
+  - User ran:
+    - `echo "$GHCR_CLASSIC_PAT" | docker login ghcr.io -u fred-vu --password-stdin`
+  - Error:
+    - `Error: Cannot perform an interactive login from a non TTY device`
+  - Likely cause:
+    - `GHCR_CLASSIC_PAT` is empty/not exported in current shell (docker falls back to interactive prompt path).
+  - Recovery path:
+    - verify variable length, use `printf` pipe, then retry pull.
+- GHCR manifest incident root-cause confirmation (2026-02-20):
+  - User login to GHCR succeeded, but `docker pull ghcr.io/fred-vu/rusty-pinch:latest` returned `manifest unknown`.
+  - Remote inspection result:
+    - `origin/main` does not contain `.github/workflows/docker-publish.yml`.
+    - `docker-publish.yml` exists only on `origin/feat/foundation-isolated-20260219`.
+  - Conclusion:
+    - zero-build publish pipeline has not run on `main`, so tag `latest` has not been published to GHCR yet.
+- Raspberry Pi runtime incident after publish (2026-02-20):
+  - User confirmed branch was merged to `main` and `Docker Publish` workflow succeeded.
+  - On Pi, image pull started but host crashed during image layer extraction/decompression.
+  - Immediate risk:
+    - host-level instability (likely memory pressure and/or storage I/O bottleneck) during large image unpack.
+  - Next diagnostic requirement:
+    - collect previous boot kernel logs to classify OOM vs mmc/ext4 I/O failure before retrying pull.
+- Raspberry Pi crash diagnostics received (2026-02-20):
+  - Kernel log evidence shows repeated:
+    - `Under-voltage detected! (0x00050005 / 0x00050000)`
+    - `Voltage normalised (0x00000000)` oscillation
+  - No OOM kill signatures present in provided excerpts.
+  - `free -h` shows 1.8 GiB RAM and no swap configured (`Swap: 0B`).
+  - Additional host warning observed:
+    - `sudo: unable to resolve host ubuntu: Name or service not known` (hostname mapping issue in `/etc/hosts`, unrelated to crash root cause).
+  - Working diagnosis:
+    - primary root cause is power instability (undervoltage) during heavy image unpack I/O + CPU load.
+- New incident: Docker daemon startup failure on Pi (2026-02-20):
+  - `docker.service` failed with restart loop and `status=1/FAILURE`.
+  - Service reached `Start request repeated too quickly`.
+  - Likely contributors in this timeline:
+    - invalid/unsupported daemon config (`/etc/docker/daemon.json`) after tuning changes
+    - filesystem instability after prior undervoltage crash.
+- New user request (2026-02-20):
+  - update Raspberry Pi runbook to use `docker-compose` command style (legacy v1 environment).
+- Runbook/doc updates for Raspberry Pi docker-compose operations (2026-02-20):
+  - Rewrote `docs/runbook-raspberry-pi.md`:
+    - standardized `docker-compose` commands
+    - added GHCR auth with `GHCR_CLASSIC_PAT`
+    - added under-voltage mitigation (power, swap, Docker concurrency)
+    - added Docker daemon recovery section for `docker.service` fail-loop
+    - added hostname resolution fix note for `sudo: unable to resolve host ubuntu`
+  - Updated `deploy/container/README.md`:
+    - standardized compose commands to `docker-compose`
+    - fixed GHCR auth example token variable and login command
+    - added command-style note for compose v1 environments
+  - Updated `docs/runbook.md`:
+    - Raspberry Pi quick-start now follows zero-build pull flow and `docker-compose`
+    - expanded failure triage for GHCR auth/manifest and undervoltage crash pattern
+  - Updated `.gitignore`:
+    - removed ignore rule for `docs/runbook-raspberry-pi.md` so runbook can be tracked/pushed.
+- Commit + push checkpoint for Raspberry Pi runbook refresh (2026-02-20):
+  - commit: `e3bbc9a docs(runbook): switch Raspberry Pi guide to docker-compose`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` created/updated with runbook docs refresh
+  - changed files:
+    - `.gitignore`
+    - `deploy/container/README.md`
+    - `docs/runbook.md`
+    - `docs/runbook-raspberry-pi.md`
+- New request intake (2026-02-20):
+  - User is testing on Raspberry Pi with `openrouter` provider and reports model responses do not understand system capabilities (tools/skills/runtime context).
+  - Requested improvement: strengthen system prompt/capability context so responses are aligned with available tools/skills.
+- Implemented runtime-aware system prompt enrichment for provider turns (2026-02-20):
+  - `src/app.rs`:
+    - added `runtime_system_identity()` and `runtime_capabilities_prompt()`
+    - capability block now injects:
+      - explicit interaction rules
+      - live tool inventory (name/description/usage from `ToolRegistry`)
+      - live skill inventory (names from `SkillManager`)
+      - skill invocation pathway note (`skills run` API/CLI flow)
+    - provider/codex prompt build path now passes identity + runtime capability context to prompt builder.
+  - `src/prompt.rs`:
+    - extended `PromptBuilder::build(...)` signature with `capabilities`
+    - static cache key now includes capability content to avoid stale cached capability blocks
+    - rendered prompt now has `## Runtime Capabilities` section
+    - added unit tests:
+      - `build_includes_runtime_capabilities_section`
+      - `cache_key_changes_when_capabilities_change`
+- Validation after system prompt capability patch:
+  - `cargo fmt --all` passed
+  - `cargo test --quiet` passed (`97` tests + integration suites all green)
+- User approval update (2026-02-20):
+  - User requested immediate `commit + push` for system-prompt capability patch.
+- Commit + push checkpoint for system-prompt capability patch (2026-02-20):
+  - commit: `bef7fc6 feat(prompt): enrich runtime capability system prompt`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` updated from `860356a` to `bef7fc6`
+  - changed files:
+    - `src/app.rs`
+    - `src/prompt.rs`
+    - `CONTINUITY.md`
+- Commit + push checkpoint for ledger sync (2026-02-20):
+  - commit: `9e8ae34 docs: sync continuity ledger for prompt push checkpoint`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` updated from `bef7fc6` to `9e8ae34`
+- New user issue report (2026-02-20):
+  - Codex login/session resets after Docker restart/recreate and after git-pull update flow on Raspberry Pi.
+- Implemented Codex auth persistence hardening for container runtimes (2026-02-20):
+  - `deploy/container/Dockerfile`:
+    - added `ENV CODEX_HOME=/var/lib/rusty-pinch/codex-home` so all container processes (including `docker-compose exec`) share persistent Codex state path by default.
+  - `deploy/container/entrypoint.sh`:
+    - normalized/exports `CODEX_HOME` + `RUSTY_PINCH_CODEX_HOME`
+    - added compatibility alias/migration for legacy `~/.codex` path to persistent `CODEX_HOME`
+    - if legacy `~/.codex` dir exists and `CODEX_HOME` is empty, migrates data into persistent mount.
+  - env/docs updates:
+    - `deploy/container/rusty-pinch.env.example`
+    - `deploy/container/rusty-pinch.rpi.env.example`
+    - `deploy/container/README.md`
+    - `docs/runbook-raspberry-pi.md`
+    - `docs/production-healthcheck.md`
+    - `README.md`
+    - document `CODEX_HOME`, persistence expectations for `./codex-home`, and caution against destructive cleanup commands (`down -v`, `git clean -fdx`) when preserving login state.
+- Validation after Codex persistence patch:
+  - `sh -n deploy/container/entrypoint.sh` passed
+- User approval update (2026-02-20):
+  - User requested immediate `commit + push` for Codex auth persistence hardening patch.
+- Commit + push checkpoint for Codex auth persistence hardening patch (2026-02-20):
+  - commit: `9c51d16 fix(container): persist codex auth state across restarts`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` updated with container auth persistence patch
+  - changed files:
+    - `deploy/container/Dockerfile`
+    - `deploy/container/entrypoint.sh`
+    - `deploy/container/rusty-pinch.env.example`
+    - `deploy/container/rusty-pinch.rpi.env.example`
+    - `deploy/container/README.md`
+    - `docs/runbook-raspberry-pi.md`
+    - `docs/production-healthcheck.md`
+    - `README.md`
+    - `CONTINUITY.md`
+- New request intake (2026-02-20):
+  - User shared runtime conversation where the assistant cannot execute `weather` skill automatically and emits repeated `/skills weather --args Paris`.
+  - User suggests adding tool pathway so agent can invoke skills in normal conversation.
+- Analysis checkpoint for skill invocation gap (2026-02-20):
+  - Confirmed current runtime only executes tools on explicit inbound user command `/tool ...` via `parse_tool_invocation` in `src/tools.rs`.
+  - Confirmed provider outputs are returned as plain assistant text without action-execution loop in `src/app.rs` (no automatic execution for emitted `/skills ...` text).
+  - Confirmed `skills` command path exists in CLI (`src/main.rs`) but is not exposed as chat runtime tool invocation pathway.
+- Implemented agent-usable skill invocation tooling + bounded assistant tool loop (2026-02-20):
+  - `src/tools.rs`:
+    - extended `ToolContext` with optional `skills` runtime reference
+    - added built-in tools:
+      - `skill_list` (`/tool skill_list`)
+      - `skill_run` (`/tool skill_run <skill_name> [skill_args]`)
+    - added tests:
+      - `skill_run_requires_skill_runtime_context`
+      - `skill_run_executes_skill_when_runtime_is_available`
+    - updated deterministic built-in tools ordering tests.
+  - `src/app.rs`:
+    - provider turn flow now supports bounded assistant action execution (`MAX_ASSISTANT_TOOL_STEPS=2`)
+    - if assistant emits single-line `/tool ...`, runtime executes tool, injects result as `system` context, then asks provider for final user-facing response
+    - added compatibility parser mapping legacy single-line `/skills <name> --args ...` to `skill_run`
+    - added bounded-loop guard message when model keeps emitting tool commands beyond limit
+    - added unit tests for assistant action parsing/mapping.
+  - docs updated:
+    - `README.md`
+    - `docs/architecture.md`
+    - include new tools and bounded assistant tool-action behavior.
+  - integration test updates:
+    - `tests/tools.rs` built-in tool list expectation now includes `skill_list` and `skill_run`.
+- Validation after skill tool/action-loop patch:
+  - `cargo fmt --all` passed
+  - `cargo test --quiet` passed (`102` tests + integration suites all green)
+- New user validation report (2026-02-20):
+  - `skill_run weather London` returns location near host IP (`Chatou, France`) instead of requested city.
+  - Indicates weather skill location argument is not being applied correctly in outbound wttr query.
+- Root-cause + fix for weather skill location fallback (2026-02-20):
+  - Root cause:
+    - in Rhai runtime, `replace()` usage in weather skill returned empty result when used as return expression in current script style.
+    - `normalize_location` effectively produced empty location, causing `wttr.in` fallback to requester IP geolocation.
+  - Fixes implemented:
+    - `assets/skills/weather.rhai`: changed `normalize_location` to mutate then return `location`:
+      - from: `return location.replace(" ", "+");`
+      - to: `location.replace(" ", "+"); return location;`
+    - `src/skills.rs` `sync_from_assets(...)`:
+      - added targeted legacy refresh path for existing workspace `weather.rhai` containing known buggy line
+      - refreshes only that legacy weather script while preserving normal “do not overwrite existing workspace skills” behavior.
+    - added regression test:
+      - `skills::tests::sync_from_assets_refreshes_legacy_weather_skill`
+- Validation after weather skill fix:
+  - `cargo fmt --all` passed
+  - `cargo test --quiet` passed (`103` tests + integration suites all green)
+  - runtime verification:
+    - `cargo run -- run --session s1 --message "/tool skill_run weather London"`
+    - output now correctly returns `London` weather (no IP-location fallback).
+- New user validation report (2026-02-20, follow-up):
+  - user still sees `/tool skill_run weather London` failing with generic error `tool 'skill_run' execution failed`.
+  - observed ~20s duration strongly suggests HTTP timeout path from weather skill runtime.
+  - current `/tool` telemetry/error path truncates root cause details.
+- Diagnostics + error-visibility hardening (2026-02-20):
+  - reproduced and validated that weather command can succeed, but transient network conditions can still produce timeout failures around default 20s skill HTTP timeout.
+  - improved error visibility:
+    - `src/app.rs` tool turn error path now records full anyhow chain (`format!("{:#}", err)`) instead of top-level context only.
+    - `src/app.rs` skills run error path now records full anyhow chain.
+  - added integration regression:
+    - `tests/tools.rs::tool_skill_run_surfaces_root_cause_error_details`
+  - validation:
+    - `cargo fmt --all` passed
+    - `cargo test --quiet` passed (`103` tests + integration suites all green)
+- Weather behavior update for "here"/empty-location + timeout configurability (2026-02-20):
+  - `assets/skills/weather.rhai`:
+    - no-location default now uses wttr IP location (instead of hardcoded `London`)
+    - added aliases for current-place requests (`here`, `ở đây`, etc.) to force auto-IP mode
+    - switched URL builder to use `https://wttr.in?...` when location is empty
+    - added script version marker `WEATHER_SKILL_VERSION=2`
+  - `src/skills.rs`:
+    - `SkillManager::new` now reads `RUSTY_PINCH_SKILL_HTTP_TIMEOUT_SECS` (default `20`)
+    - legacy weather script refresh detection expanded (refreshes known v1/London defaults and old replace pattern)
+  - docs/env updates:
+    - `.env.example`
+    - `deploy/container/rusty-pinch.env.example`
+    - `deploy/container/rusty-pinch.rpi.env.example`
+    - `README.md`
+    - `assets/skills/README.md`
+  - runtime verification:
+    - `cargo run -- run --session s2 --message "/tool skill_run weather ở đây"`
+    - output now succeeds and logs `location=(auto-ip)` with wttr IP-based location result.
+  - validation:
+    - `cargo fmt --all` passed
+    - `cargo test --quiet` passed (`103` tests + integration suites all green)
+- User request update (2026-02-20):
+  - user requested branch rename to today's date before commit/push.
+- Branch rename + publish checkpoint (2026-02-20):
+  - local branch renamed:
+    - from `feat/foundation-isolated-20260219`
+    - to `feat/foundation-isolated-20260220`
+  - commit:
+    - `640e7ae feat(skills): enable agent skill tools and weather ip fallback`
+  - push:
+    - published new remote branch `origin/feat/foundation-isolated-20260220`
+    - upstream tracking configured for renamed branch.
+- Continuity workflow refresh (2026-02-20):
+  - user updated `AGENTS.md` to require continuity-ledger-first operation.
+  - assistant re-read updated `AGENTS.md` and reloaded `CONTINUITY.md`.
+  - subsequent turns must keep ledger synchronized before/while proceeding.
+- User request update (2026-02-20):
+  - user asked to read `docs/Opentelemetry-grafana.md`.
+- Documentation review (2026-02-20):
+  - read `docs/Opentelemetry-grafana.md`.
+  - document defines 4-phase observability plan:
+    - Rust OTel instrumentation (`tracing` + OTLP exporter + provider/tool metrics).
+    - Grafana Alloy config (`deploy/config/config.alloy`) with env-based secrets.
+    - Raspberry Pi compose integration (`alloy` service + OTEL endpoint wiring).
+    - Grafana Cloud dashboards/alerts for latency, tool usage, and error rates.
+- User execution approval (2026-02-20):
+  - user approved immediate end-to-end implementation and requested no mid-way stop.
+- OTel/Grafana implementation plan locked (2026-02-20):
+  - Rust runtime:
+    - add `tracing` + OpenTelemetry OTLP initialization at startup
+    - instrument provider call path with request/session span fields
+    - export `tokens_used` counter + `provider_latency_seconds` histogram
+    - add per-tool execution counter labeled by tool name/source
+  - Edge deploy:
+    - add `deploy/config/config.alloy`
+    - add `alloy` service to `deploy/container/docker-compose.rpi.yml`
+    - wire `OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317` in env templates
+  - Docs:
+    - update compose/runbook instructions for Grafana Cloud env provisioning and verification steps
+- OTel/Grafana implementation delivered (2026-02-20):
+  - Rust runtime observability:
+    - added `src/observability.rs` and startup init in `src/main.rs`
+    - added OpenTelemetry + tracing deps in `Cargo.toml`/`Cargo.lock`
+    - provider instrumentation in `src/provider.rs`:
+      - `tracing::instrument` around chat completion with `request_id`/`session_id`
+      - usage-token extraction from provider response (`usage.total_tokens`)
+      - provider retry/success/failure trace events
+    - app instrumentation in `src/app.rs`:
+      - provider metrics export calls (`tokens_used`, `provider_latency_seconds`)
+      - tool execution counters for user/assistant tool paths
+      - tool spans with `request_id`/`session_id`
+  - Alloy + compose integration:
+    - added `deploy/config/config.alloy` (OTLP receiver + batch + Grafana Cloud exporter via env auth)
+    - updated compose profiles:
+      - `deploy/container/docker-compose.rpi.yml`
+      - `deploy/container/docker-compose.example.yml`
+      - added `alloy` service and OTLP endpoint wiring (`http://alloy:4317`)
+    - updated env templates:
+      - `.env.example`
+      - `deploy/container/rusty-pinch.env.example`
+      - `deploy/container/rusty-pinch.rpi.env.example`
+  - Documentation updates:
+    - `README.md`
+    - `deploy/container/README.md`
+    - `docs/architecture.md`
+    - `docs/runbook-raspberry-pi.md`
+    - `docs/testing.md`
+    - runbook now includes Grafana Cloud dashboard/alert baseline queries (latency quantiles, tool frequency, provider error-rate >10%/5m alert).
+  - Validation outcomes:
+    - `cargo check` passed
+    - `cargo check --locked` passed
+    - `cargo fmt --all` passed
+    - `cargo test --locked` passed (all unit + integration tests green)
+    - runtime smoke passed with unreachable OTLP endpoint (no crash):
+      - `RUSTY_PINCH_PROVIDER=local OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:1 cargo run -- run --session otel-smoke --message "hello observability"`
+    - compose syntax check command could not run in this workspace because `docker-compose` binary is unavailable.
+- User request update (2026-02-20):
+  - user requested immediate commit + push to GitHub because deployment mode is Raspberry Pi zero-build local.
+- Commit/push execution status (2026-02-20):
+  - created commit:
+    - `afc69b2 feat(observability): add opentelemetry pipeline and grafana alloy deploy`
+    - scope includes Rust OTel instrumentation + Alloy compose/env/docs updates.
+  - push attempts:
+    - `git push origin feat/foundation-isolated-20260220` failed: `Could not resolve host: github.com` (initial network/DNS failure).
+    - escalated retry failed: `could not read Username for 'https://github.com': No such device or address` (no GitHub credential configured in this environment).
+    - SSH fallback push also failed due host key verification / missing SSH auth.
+- Token-auth follow-up (2026-02-20):
+  - user requested using `GITHUB_FINEGRAINED` env var for push.
+  - verification in current environment (sandbox + escalated host shell) shows:
+    - `GITHUB_FINEGRAINED_MISSING`
+  - push cannot proceed until token variable is exported in this execution environment.
+- Token source clarification (2026-02-20):
+  - user clarified token exists in repository `.env`.
+  - verified `.env` contains `GITHUB_FINEGRAINED=` entry.
+  - plan: source `.env` in push command and use token-auth header without printing secret.
+- Push completed with token auth (2026-02-20):
+  - sourced `.env` in command scope and pushed with HTTPS auth header.
+  - remote branch created/pushed:
+    - `feat/foundation-isolated-20260220`
+  - pushed commit:
+    - `afc69b2 feat(observability): add opentelemetry pipeline and grafana alloy deploy`
+- User report update (2026-02-20):
+  - user reports Grafana Cloud connectivity still failing, likely due to incorrect env variable names.
+  - user requested alignment with official doc:
+    - https://grafana.com/docs/grafana-cloud/send-data/otlp/send-data-otlp/
+- Grafana env-name compatibility fix (2026-02-20):
+  - confirmed repo `.env` only had:
+    - `OTEL_EXPORTER_OTLP_ENDPOINT`
+    - `OTEL_SERVICE_NAME`
+  - root cause:
+    - compose profile reused `OTEL_EXPORTER_OTLP_ENDPOINT` for worker->alloy path, conflicting with Grafana doc convention where same var represents cloud endpoint.
+  - implemented fix:
+    - Rust runtime endpoint resolution now supports worker override:
+      - new env: `RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT` (takes precedence)
+      - fallback: `OTEL_EXPORTER_OTLP_ENDPOINT`
+      - file: `src/observability.rs`
+    - compose worker services updated to set only override var:
+      - `deploy/container/docker-compose.rpi.yml`
+      - `deploy/container/docker-compose.example.yml`
+    - Alloy config updated to align with Grafana OTLP env style:
+      - endpoint from `OTEL_EXPORTER_OTLP_ENDPOINT` (with alias fallback `GRAFANA_CLOUD_OTLP_ENDPOINT`)
+      - Authorization header from:
+        - `GRAFANA_CLOUD_OTLP_AUTHORIZATION` OR
+        - parsed `OTEL_EXPORTER_OTLP_HEADERS` (`Authorization=Basic ...`)
+      - file: `deploy/config/config.alloy`
+    - env/docs updated accordingly:
+      - `.env.example`
+      - `deploy/container/rusty-pinch.env.example`
+      - `deploy/container/rusty-pinch.rpi.env.example`
+      - `README.md`
+      - `deploy/container/README.md`
+      - `docs/runbook-raspberry-pi.md`
+      - `docs/architecture.md`
+  - validation:
+    - `cargo check --locked` passed
+    - `cargo test --locked` passed (all tests green)
+- Grafana env-name hotfix published (2026-02-20):
+  - commit:
+    - `76c495a fix(observability): align grafana otlp env mapping for alloy`
+  - push:
+    - updated `origin/feat/foundation-isolated-20260220` with compatibility patch.
+  - reference docs consulted:
+    - Grafana Cloud OTLP send-data guide (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`)
+    - Grafana Alloy `otelcol.auth.headers` + `otelcol.exporter.otlphttp` component docs.
+- User runtime error report (2026-02-20):
+  - on Raspberry Pi, `alloy` container fails to load config:
+    - `/etc/alloy/config.alloy` parser errors: `missing ',' in expression list`
+    - failing lines include complex nested expression in `otelcol.auth.headers` and `coalesce(...)` endpoint expression.
+  - required action: simplify `config.alloy` to Alloy-compatible syntax and republish hotfix.
+- Alloy parser hotfix (2026-02-20):
+  - root cause:
+    - `deploy/config/config.alloy` used nested header-parsing expressions that Alloy parser rejected at runtime.
+  - fix applied:
+    - replaced `otelcol.auth.headers` + nested expressions with minimal `otelcol.auth.basic`.
+    - exporter endpoint now directly uses `OTEL_EXPORTER_OTLP_ENDPOINT`.
+    - basic auth now uses:
+      - `GRAFANA_CLOUD_ACCOUNT_ID`
+      - `GRAFANA_CLOUD_API_TOKEN`
+    - updated docs/templates accordingly:
+      - `deploy/container/rusty-pinch.rpi.env.example`
+      - `deploy/container/rusty-pinch.env.example`
+      - `deploy/container/README.md`
+      - `docs/runbook-raspberry-pi.md`
+      - `README.md`
+  - validation:
+    - `cargo check --locked` passed
+    - `cargo test --locked` passed (all tests green)
 
 Now:
-- User approved commit/push for codex-provider-default patch.
-- Working tree is ready on branch `feat/foundation-isolated-20260219` with validated changes.
+- Alloy syntax hotfix is implemented and ready to publish.
 
 Next:
-- Commit staged codex-provider-default changes and push branch to `origin`.
+- Commit/push parser hotfix and provide forced-recreate commands for Pi.
 
 Open questions (UNCONFIRMED if needed):
+- UNCONFIRMED: preferred execution mode for skill invocation (only explicit user command vs model-autonomous tool loop).
+- UNCONFIRMED: whether to keep current compact capability inventory format or expand with richer per-skill descriptions/examples.
 - UNCONFIRMED: zero-touch ChatGPT OAuth in headless containers may still require initial device-auth completion unless auth material is pre-seeded.
 - UNCONFIRMED: whether Raspberry Pi checkout includes commit `97f9172` (Codex install/build-arg + auto-login support).
 - UNCONFIRMED: whether user wants implementation of a new tool to run selected `rusty-pinch` subcommands from Telegram flow.
+- UNCONFIRMED: preferred default location for weather queries when args are empty (currently `London` in skill template).
+- UNCONFIRMED: whether untracked `docs/zeroclaw-comparison.md` should be included in commit scope (currently excluded by default).
+- UNCONFIRMED: whether GHCR package visibility will be public or private in production (impacts Pi `docker login` requirement).
+- UNCONFIRMED: whether current Pi token has package read permission for GHCR (`ghcr.io/fred-vu/rusty-pinch`).
+- UNCONFIRMED: whether `GHCR_CLASSIC_PAT` is currently exported in the same interactive shell where `docker login` is executed.
+- UNCONFIRMED: preferred release channel policy for Pi (`latest` from `main` vs pinned version tags).
+- UNCONFIRMED: crash root cause category on Pi (`OOM` vs `mmc/ext4 I/O` vs thermal/power reset).
+- UNCONFIRMED: exact PSU/cable path currently used on Pi and whether power is supplied via official 5V/3A source.
+- UNCONFIRMED: exact docker daemon error line from `journalctl -u docker.service -n 200`.
 
 Working set (files/ids/commands):
 - `CONTINUITY.md`
@@ -899,8 +1481,12 @@ Working set (files/ids/commands):
 - `src/evolution.rs`
 - `src/telemetry.rs`
 - `src/monitor.rs`
+- `src/observability.rs`
 - `.github/workflows/ci.yml`
 - `.github/workflows/release.yml`
+- `.github/workflows/docker-publish.yml`
+- `.dockerignore`
+- `.gitignore`
 - `.env.example`
 - `deploy/container/Dockerfile`
 - `deploy/container/README.md`
@@ -909,6 +1495,11 @@ Working set (files/ids/commands):
 - `deploy/container/entrypoint.sh`
 - `deploy/container/rusty-pinch.env.example`
 - `deploy/container/rusty-pinch.rpi.env.example`
+- `deploy/config/config.alloy`
+- `docs/Opentelemetry-grafana.md`
+- `docs/release.md`
+- `docs/production-healthcheck.md`
+- `docs/zerobuild-local.md`
 - `tests/pulse_persistence.rs`
 - `tests/observability.rs`
 - `tests/evolution_guard.rs`

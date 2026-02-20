@@ -5,6 +5,7 @@ use chrono::Utc;
 use serde_json::json;
 
 use crate::session::SessionStore;
+use crate::skills::SkillManager;
 
 type ToolExec = for<'a> fn(&ToolContext<'a>, &str) -> Result<String>;
 
@@ -23,6 +24,7 @@ pub struct ToolContext<'a> {
     pub sessions: &'a SessionStore,
     pub provider: &'a str,
     pub model: &'a str,
+    pub skills: Option<&'a SkillManager>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,6 +87,18 @@ impl ToolRegistry {
             "Show current UTC timestamp in RFC3339.",
             "/tool time_now",
             time_now_tool,
+        );
+        registry.register(
+            "skill_list",
+            "List installed runtime skills.",
+            "/tool skill_list",
+            skill_list_tool,
+        );
+        registry.register(
+            "skill_run",
+            "Run a runtime skill. Args: <skill_name> [skill_args]",
+            "/tool skill_run <skill_name> [skill_args]",
+            skill_run_tool,
         );
         registry
     }
@@ -200,6 +214,42 @@ fn session_tail_tool(ctx: &ToolContext<'_>, args: &str) -> Result<String> {
     serde_json::to_string_pretty(&payload).context("failed encoding session_tail output")
 }
 
+fn skill_list_tool(ctx: &ToolContext<'_>, args: &str) -> Result<String> {
+    if !args.trim().is_empty() {
+        return Err(anyhow!("skill_list does not accept arguments"));
+    }
+
+    let skills = ctx
+        .skills
+        .ok_or_else(|| anyhow!("skill runtime is not available in this context"))?
+        .list_skills()
+        .context("failed listing skills")?;
+
+    let names = skills
+        .into_iter()
+        .map(|skill| skill.name)
+        .collect::<Vec<String>>();
+
+    serde_json::to_string_pretty(&json!({ "skills": names }))
+        .context("failed encoding skill_list output")
+}
+
+fn skill_run_tool(ctx: &ToolContext<'_>, args: &str) -> Result<String> {
+    let (skill_name, skill_args) = split_name_and_args(args.trim());
+    if skill_name.is_empty() {
+        return Err(anyhow!(
+            "skill_run requires skill name. usage: /tool skill_run <skill_name> [skill_args]"
+        ));
+    }
+
+    let manager = ctx
+        .skills
+        .ok_or_else(|| anyhow!("skill runtime is not available in this context"))?;
+    manager
+        .run(skill_name, skill_args)
+        .with_context(|| format!("failed running skill '{}'", skill_name))
+}
+
 fn parse_positive_count(raw: &str, default_value: usize, max_value: usize) -> Result<usize> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -255,6 +305,7 @@ fn validate_tool_args(args: &str, max_chars: usize) -> Result<()> {
 mod tests {
     use super::{parse_tool_invocation, ToolContext, ToolRegistry};
     use crate::session::SessionStore;
+    use crate::skills::SkillManager;
 
     #[test]
     fn registry_list_is_deterministic() {
@@ -268,6 +319,8 @@ mod tests {
             vec![
                 "model_info".to_string(),
                 "session_tail".to_string(),
+                "skill_list".to_string(),
+                "skill_run".to_string(),
                 "time_now".to_string()
             ]
         );
@@ -301,6 +354,7 @@ mod tests {
             sessions: &sessions,
             provider: "local",
             model: "test-model",
+            skills: None,
         };
 
         let err = ToolRegistry::with_defaults()
@@ -322,6 +376,7 @@ mod tests {
             sessions: &sessions,
             provider: "local",
             model: "test-model",
+            skills: None,
         };
 
         let err = ToolRegistry::with_defaults()
@@ -332,5 +387,58 @@ mod tests {
             "unexpected error: {}",
             err
         );
+    }
+
+    #[test]
+    fn skill_run_requires_skill_runtime_context() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let sessions = SessionStore::new(temp.path()).expect("session store");
+        let ctx = ToolContext {
+            session_id: "test",
+            sessions: &sessions,
+            provider: "local",
+            model: "test-model",
+            skills: None,
+        };
+
+        let err = ToolRegistry::with_defaults()
+            .execute("skill_run", &ctx, "weather Paris")
+            .expect_err("missing skill context should fail");
+        let details = format!("{:#}", err);
+        assert!(
+            details.contains("skill runtime is not available"),
+            "unexpected error: {}",
+            details
+        );
+    }
+
+    #[test]
+    fn skill_run_executes_skill_when_runtime_is_available() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let sessions = SessionStore::new(temp.path()).expect("session store");
+        let skills = SkillManager::new(temp.path().join("skills")).expect("skill manager");
+        skills
+            .write_skill(
+                "echoer",
+                r#"
+fn main(args) {
+    if args.len() == 0 { return "empty"; }
+    return args;
+}
+"#,
+            )
+            .expect("write skill");
+        let ctx = ToolContext {
+            session_id: "test",
+            sessions: &sessions,
+            provider: "local",
+            model: "test-model",
+            skills: Some(&skills),
+        };
+
+        let out = ToolRegistry::with_defaults()
+            .execute("skill_run", &ctx, "echoer hello")
+            .expect("skill run should succeed");
+        assert_eq!(out, "hello");
     }
 }

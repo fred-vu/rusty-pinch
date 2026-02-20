@@ -74,8 +74,9 @@ Raspberry Pi container profile quick start:
 ```bash
 cd rusty-pinch/deploy/container
 cp rusty-pinch.rpi.env.example rusty-pinch.rpi.env
-mkdir -p ./state/data ./state/workspace
-docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
+mkdir -p ./data ./workspace ./skills ./codex-home
+docker-compose -f docker-compose.rpi.yml pull
+docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram watchtower
 ```
 
 Raspberry Pi monitor via compose:
@@ -118,6 +119,12 @@ docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch m
    - verify key source in env (`RUSTY_PINCH_OPENROUTER_API_KEY` preferred; avoid stale `RUSTY_PINCH_API_KEY` override).
    - verify `RUSTY_PINCH_PROVIDER=openrouter` and `api_base=https://openrouter.ai/api/v1` in `doctor`.
    - recreate compose worker after key changes: `docker-compose -f docker-compose.rpi.yml up -d --force-recreate rusty-pinch-telegram`.
+9. GHCR pull denied or manifest not found:
+   - verify login with PAT classic `read:packages`: `printf '%s' "$GHCR_CLASSIC_PAT" | docker login ghcr.io -u fred-vu --password-stdin`.
+   - verify image existence: `docker pull ghcr.io/fred-vu/rusty-pinch:latest`.
+10. Raspberry Pi crash while pulling image:
+   - inspect kernel log for undervoltage: `sudo journalctl -k -b -1 | egrep -i "Under-voltage|Voltage normalised"`.
+   - apply swap + low Docker download concurrency before retry.
 
 ## Backup and cleanup
 

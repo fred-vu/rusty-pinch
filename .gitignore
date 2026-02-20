@@ -6,4 +6,9 @@
 deploy/container/rusty-pinch.env
 deploy/container/rusty-pinch.rpi.env
 deploy/container/state/
-/docs/runbook-raspberry-pi.md
+deploy/container/data/
+deploy/container/workspace/
+deploy/container/skills/
+deploy/container/codex-home/
+/docs/zeroclaw-comparison.md
+/docs/zerobuild-local.md

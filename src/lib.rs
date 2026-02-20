@@ -5,6 +5,7 @@ pub mod codex;
 pub mod config;
 pub mod evolution;
 pub mod monitor;
+pub mod observability;
 pub mod prompt;
 pub mod provider;
 pub mod pulse;

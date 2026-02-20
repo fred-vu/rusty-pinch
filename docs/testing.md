@@ -56,6 +56,13 @@ Optional live monitor:
 cargo run -- monitor --process-match rusty-pinch --interval-ms 1000
 ```
 
+5.2 Validate OTel init + degraded endpoint behavior
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317 cargo run -- run --session smoke --message "otel check"
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:1 cargo run -- run --session smoke --message "otel degraded check"
+```
+
 6. Validate observability contract
 
 ```bash
@@ -182,6 +189,8 @@ RUSTY_PINCH_REQUEST_RETRIES=2
 - Telegram/WhatsApp channel message parsing tests pass (`cargo test --test channels`).
 - session command returns JSON history with both `user` and `assistant` entries.
 - each `run`/`tools run` turn prints one JSON log event with `event=turn` and `request_id`.
+- startup prints `event=observability_init` with `status=ok` when OTLP pipeline is initialized.
+- if observability init fails (for example exporter config errors), startup prints `event=observability_init` with `status=degraded` and runtime still continues.
 - `stats` includes persisted `telemetry.total_turns` and `last_turn` after process restart.
 - `monitor --once` prints app/process/host/storage blocks without error.
 - compose monitor command works against running container (`exec ... rusty-pinch monitor --once`).

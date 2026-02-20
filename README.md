@@ -15,6 +15,7 @@ Rusty Pinch is a clean, standalone Rust runtime package for the assistant stack.
 - Deterministic local tool path (`/tool ...`) with safety guardrails
 - Native channel listeners: Telegram long polling and WhatsApp bridge websocket
 - Structured per-turn logs with `request_id`
+- OpenTelemetry traces/metrics export (OTLP) for Grafana Alloy/Grafana Cloud
 - Persisted telemetry counters across CLI restarts
 - Standalone packaging script and CI artifacts
 
@@ -96,23 +97,40 @@ Core commands:
 - `cargo run -- evolution force-unlock --confirm`: force-remove evolution lock file
 - Evolution stage/apply operations hold an exclusive lock at `${RUSTY_PINCH_WORKSPACE}/updates/evolution.lock` to prevent concurrent rollout mutations.
 
+Skill bootstrap behavior:
+
+- Tracked starter skills under `assets/skills/*.rhai` are copied to `${RUSTY_PINCH_WORKSPACE}/skills` on app startup when the destination skill file is missing.
+- Workspace skills are never overwritten by asset sync.
+- Included starter skill: `weather` (`assets/skills/weather.rhai`).
+
+Weather skill args:
+
+- `Hanoi` -> current weather summary
+- `forecast|Hanoi` -> forecast output
+- `rain|Hanoi` -> precipitation-focused line
+- `detail|Hanoi` -> detailed current conditions
+
 Tool commands:
 
 - `cargo run -- tools list`
 - `cargo run -- tools run --session <id> --name model_info`
 - `cargo run -- run --session <id> --message "/tool session_tail 5"`
+- `cargo run -- run --session <id> --message "/tool skill_run weather Paris"`
 
 Built-in tools:
 
 - `/tool model_info`
 - `/tool time_now`
 - `/tool session_tail [count]`
+- `/tool skill_list`
+- `/tool skill_run <skill_name> [skill_args]`
 
 Tool safety policy:
 
 - Accept exact `/tool` prefix only (for example `/toolbox` is ignored as tool command)
 - Tool names allow `[a-z0-9_-]`, max 64 chars
 - Tool args max 512 chars, control characters rejected
+- Assistant-emitted single-line `/tool ...` actions can be auto-executed in provider turns (max 2 tool steps per turn).
 
 Monitor flags:
 
@@ -135,8 +153,14 @@ Primary variables:
 - `RUSTY_PINCH_DATA_DIR`
 - `RUSTY_PINCH_WORKSPACE`
 - `RUSTY_PINCH_TELEMETRY_FILE` (default `${RUSTY_PINCH_DATA_DIR}/telemetry/latest.json`)
+- `RUSTY_PINCH_SKILL_HTTP_TIMEOUT_SECS` (default `20`; timeout for skill `http_get`/`http_post`)
 - `RUSTY_PINCH_ENV_FILE` (optional explicit `.env` file path)
+- `RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT` (optional worker-side OTLP endpoint override)
+- `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://localhost:4317`)
+- `OTEL_SERVICE_NAME` (default `rusty-pinch`)
+- `OTEL_METRIC_EXPORT_INTERVAL_SECS` (default `15`)
 - `RUSTY_PINCH_CODEX_ENABLED`
+- `CODEX_HOME` (container default: `/var/lib/rusty-pinch/codex-home`; keep this on persistent storage)
 - `RUSTY_PINCH_CODEX_CLI_BIN`
 - `RUSTY_PINCH_CODEX_CLI_ARGS` (default `exec --skip-git-repo-check` to support non-git container runtimes)
 - `RUSTY_PINCH_CODEX_PROMPT_FLAG` (default empty/positional prompt)
@@ -178,6 +202,8 @@ Primary variables:
 - `RUSTY_PINCH_CHANNELS_WHATSAPP_ENABLED`
 - `RUSTY_PINCH_CHANNELS_WHATSAPP_BRIDGE_URL`
 - `RUSTY_PINCH_CHANNELS_WHATSAPP_ALLOW_FROM`
+- `GRAFANA_CLOUD_ACCOUNT_ID` (Grafana Cloud OTLP account id for Alloy basic auth)
+- `GRAFANA_CLOUD_API_TOKEN` (Grafana Cloud API token for Alloy basic auth)
 
 Common key/base overrides:
 
@@ -235,6 +261,10 @@ Shutdown behavior:
 - `request_id`, `session_id`, `path`, `status`
 - `attempts`, `latency_ms` (provider path)
 - `tool_name` (tool path)
+- OpenTelemetry producer path:
+- tracing spans include `request_id`/`session_id` on provider + tool execution spans
+- metrics include `tokens_used` counter, `provider_latency_seconds` histogram, and `tool_executions_total` counter
+- OTLP exporter uses `RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT` when set, otherwise falls back to `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://localhost:4317`)
 - `stats` returns persisted telemetry:
 - `total_turns`, `ok_turns`, `error_turns`, `provider_turns`, `tool_turns`
 - `last_turn` persists across process restarts
@@ -266,6 +296,10 @@ GitHub Actions automation:
   - `cargo fmt --check`
   - `cargo build --locked`
   - `cargo test --locked`
+- `.github/workflows/docker-publish.yml` runs on `main` and tag pushes (`v*`):
+  - builds and pushes `linux/arm64` image to GHCR
+  - tags include `latest` (default branch) and version tags (`v*`)
+  - published image includes Codex CLI in runtime
 - `.github/workflows/release.yml` runs on tags matching `v*` (and manual dispatch):
   - release gate (`fmt` + tests)
   - matrix release builds for Linux/macOS/Windows
@@ -290,29 +324,35 @@ Raspberry Pi compose monitor commands:
 
 ```bash
 cd rusty-pinch/deploy/container
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --pid 1 --interval-ms 1000
+docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once
+docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --pid 1 --interval-ms 1000
 ```
 
-Optional Codex CLI build for Pi container (no host Rust install needed):
+Raspberry Pi zero-build startup (pull image from GHCR, no local build):
 
 ```bash
 cd rusty-pinch/deploy/container
-export RUSTY_PINCH_INSTALL_CODEX_CLI=true
-docker-compose -f docker-compose.rpi.yml build rusty-pinch-telegram
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex --version
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
+cp rusty-pinch.rpi.env.example rusty-pinch.rpi.env
+mkdir -p ./data ./workspace ./skills ./codex-home
+mkdir -p ./alloy-data
+docker compose -f docker-compose.rpi.yml pull
+docker compose -f docker-compose.rpi.yml up -d alloy rusty-pinch-telegram watchtower
+docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex --version
+docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
 ```
 
-For container runtimes, set `RUSTY_PINCH_CODEX_CLI_ARGS="exec --skip-git-repo-check"` to avoid Codex git-trust checks on non-repo workdirs.
+For container runtimes, set `RUSTY_PINCH_CODEX_CLI_ARGS=exec --skip-git-repo-check` to avoid Codex git-trust checks on non-repo workdirs.
 If Codex session is lost after worker restart/recreate, run:
-`docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth`.
+`docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth`.
+Keep `./codex-home` across updates and avoid `docker compose down -v` if you want to preserve Codex login state.
+
+Watchtower auto-update interval defaults to `300s`; override with `WATCHTOWER_POLL_INTERVAL_SECS`.
 
 If turn logs show `Failed to authenticate request with Clerk`, review key envs in
 `rusty-pinch.rpi.env` and recreate the worker:
 
 ```bash
-docker-compose -f docker-compose.rpi.yml up -d --force-recreate rusty-pinch-telegram
+docker compose -f docker-compose.rpi.yml up -d --force-recreate rusty-pinch-telegram
 ```
 
 Artifacts:

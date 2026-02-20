@@ -2,24 +2,28 @@ version: "3.3"
 
 services:
   rusty-pinch-telegram:
-    build:
-      context: ../../..
-      dockerfile: rusty-pinch/deploy/container/Dockerfile
-      args:
-        INSTALL_CODEX_CLI: ${RUSTY_PINCH_INSTALL_CODEX_CLI:-false}
-    image: ${RUSTY_PINCH_IMAGE:-rusty-pinch:pi-local}
+    image: ${RUSTY_PINCH_IMAGE:-ghcr.io/fred-vu/rusty-pinch:latest}
     env_file:
       - ./rusty-pinch.rpi.env
+    environment:
+      RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT: ${RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4317}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4317}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-rusty-pinch}
     command: ["channels", "telegram"]
+    depends_on:
+      - alloy
     volumes:
-      - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/data:/var/lib/rusty-pinch/data
-      - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/workspace:/var/lib/rusty-pinch/workspace
-      - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/codex-home:/var/lib/rusty-pinch/codex-home
+      - ./data:/var/lib/rusty-pinch/data
+      - ./workspace:/var/lib/rusty-pinch/workspace
+      - ./skills:/var/lib/rusty-pinch/workspace/skills
+      - ./codex-home:/var/lib/rusty-pinch/codex-home
     healthcheck:
       test: ["CMD", "rusty-pinch", "doctor"]
       interval: 60s
       timeout: 10s
       retries: 3
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     logging:
       driver: json-file
       options:
@@ -28,27 +32,61 @@ services:
     restart: unless-stopped
 
   rusty-pinch-whatsapp:
-    build:
-      context: ../../..
-      dockerfile: rusty-pinch/deploy/container/Dockerfile
-      args:
-        INSTALL_CODEX_CLI: ${RUSTY_PINCH_INSTALL_CODEX_CLI:-false}
-    image: ${RUSTY_PINCH_IMAGE:-rusty-pinch:pi-local}
+    image: ${RUSTY_PINCH_IMAGE:-ghcr.io/fred-vu/rusty-pinch:latest}
     env_file:
       - ./rusty-pinch.rpi.env
+    environment:
+      RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT: ${RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4317}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4317}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-rusty-pinch}
     command: ["channels", "whatsapp"]
+    depends_on:
+      - alloy
     volumes:
-      - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/data:/var/lib/rusty-pinch/data
-      - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/workspace:/var/lib/rusty-pinch/workspace
-      - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/codex-home:/var/lib/rusty-pinch/codex-home
+      - ./data:/var/lib/rusty-pinch/data
+      - ./workspace:/var/lib/rusty-pinch/workspace
+      - ./skills:/var/lib/rusty-pinch/workspace/skills
+      - ./codex-home:/var/lib/rusty-pinch/codex-home
     healthcheck:
       test: ["CMD", "rusty-pinch", "doctor"]
       interval: 60s
       timeout: 10s
       retries: 3
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "5"
+    restart: unless-stopped
+
+  alloy:
+    image: grafana/alloy:latest
+    env_file:
+      - ./rusty-pinch.rpi.env
+    command:
+      - run
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ../config/config.alloy:/etc/alloy/config.alloy:ro
+      - ./alloy-data:/var/lib/alloy/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    restart: unless-stopped
+
+  watchtower:
+    image: containrrr/watchtower:1.7.1
+    command:
+      - --label-enable
+      - --rolling-restart
+      - --cleanup
+      - --interval
+      - ${WATCHTOWER_POLL_INTERVAL_SECS:-300}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped

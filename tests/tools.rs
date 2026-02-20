@@ -107,6 +107,8 @@ fn tools_list_order_is_deterministic() {
         vec![
             "model_info".to_string(),
             "session_tail".to_string(),
+            "skill_list".to_string(),
+            "skill_run".to_string(),
             "time_now".to_string()
         ]
     );
@@ -146,6 +148,49 @@ fn tool_command_bypasses_provider_key_requirements() {
         .expect("history should load");
     assert!(history.contains("/tool model_info"));
     assert!(history.contains("provider=openai"));
+}
+
+#[test]
+fn tool_skill_run_surfaces_root_cause_error_details() {
+    let _guard = ENV_LOCK.lock().expect("lock env");
+    reset_rusty_env();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let data_dir = temp.path().join("data");
+    let workspace_dir = temp.path().join("workspace");
+
+    fs::write(
+        temp.path().join(".env"),
+        format!(
+            "RUSTY_PINCH_PROVIDER=local\nRUSTY_PINCH_MODEL=test-model\nRUSTY_PINCH_DATA_DIR={}\nRUSTY_PINCH_WORKSPACE={}\n",
+            data_dir.display(),
+            workspace_dir.display()
+        ),
+    )
+    .expect("write env");
+
+    std::env::set_var(
+        "RUSTY_PINCH_ENV_FILE",
+        temp.path().join(".env").display().to_string(),
+    );
+
+    let settings = Settings::load().expect("load settings");
+    let mut app = RustyPinchApp::new(settings).expect("new app");
+
+    let err = app
+        .process_turn("tool-session", "/tool skill_run unknown_skill")
+        .expect_err("unknown skill should fail");
+    let details = format!("{:#}", err);
+
+    assert!(
+        details.contains("unknown_skill"),
+        "unexpected error: {}",
+        details
+    );
+    assert!(
+        details.contains("not found"),
+        "unexpected error: {}",
+        details
+    );
 }
 
 #[test]

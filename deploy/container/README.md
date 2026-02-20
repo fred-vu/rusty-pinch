@@ -1,174 +1,143 @@
-# Rusty Pinch container profile
+# Rusty Pinch Container Deployment
+
+Command style in this document uses `docker-compose` for compatibility with Raspberry Pi environments running compose v1.
 
 ## Files
 
-- `Dockerfile`: builds and packages `rusty-pinch` runtime.
-- `docker-compose.example.yml`: compose profile for Telegram and optional WhatsApp worker.
-- `docker-compose.rpi.yml`: Raspberry Pi compose profile (ARM-focused, bind-mounted state).
-- `rusty-pinch.env.example`: env template for compose runs.
-- `rusty-pinch.rpi.env.example`: env template for Raspberry Pi compose runs.
+- `Dockerfile`: multi-stage runtime image.
+- `docker-compose.example.yml`: local compose profile (build from source).
+- `docker-compose.rpi.yml`: Raspberry Pi zero-build profile (pull from GHCR).
+- `rusty-pinch.env.example`: local compose env template.
+- `rusty-pinch.rpi.env.example`: Raspberry Pi env template.
+- `../config/config.alloy`: Grafana Alloy OTLP receiver/exporter config.
 
-## Quick start
+## Local build profile
 
-Use `docker-compose` (v1-compatible). If your host uses Docker Compose v2 plugin, the equivalent command is `docker compose`.
+Use this for workstation development:
 
 ```bash
 cd rusty-pinch/deploy/container
 cp rusty-pinch.env.example rusty-pinch.env
-# fill API keys / tokens
-
+# fill API keys / channel tokens
 docker-compose -f docker-compose.example.yml up -d rusty-pinch-telegram
 ```
 
-Enable WhatsApp worker (community test mode):
+Optional observability stack (Alloy + worker):
 
 ```bash
-docker-compose -f docker-compose.example.yml up -d rusty-pinch-whatsapp
+docker-compose -f docker-compose.example.yml up -d alloy rusty-pinch-telegram
 ```
 
-## Raspberry Pi quick start (recommended)
+## Raspberry Pi zero-build profile (recommended)
 
-Target: Raspberry Pi OS 64-bit (`aarch64` / `linux/arm64`).
+Target: Raspberry Pi 64-bit (`linux/arm64`).
 
-Detailed runbook:
-
-- `rusty-pinch/docs/runbook-raspberry-pi.md`
+This profile does not run `docker build` on Pi. It pulls prebuilt images from GHCR.
 
 ```bash
 cd rusty-pinch/deploy/container
 cp rusty-pinch.rpi.env.example rusty-pinch.rpi.env
-# fill API key / Telegram token
-mkdir -p ./state/data ./state/workspace ./state/codex-home
-
-docker-compose -f docker-compose.rpi.yml build
-docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
+# fill API keys / channel tokens
+mkdir -p ./data ./workspace ./skills ./codex-home ./alloy-data
+docker-compose -f docker-compose.rpi.yml pull
+docker-compose -f docker-compose.rpi.yml up -d alloy rusty-pinch-telegram watchtower
 ```
 
-Enable WhatsApp worker (community test mode):
+For Grafana Cloud forwarding, set these in `rusty-pinch.rpi.env`:
+
+- `RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317` (worker -> alloy)
+- `OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317` (legacy worker compatibility for older images)
+- `GRAFANA_CLOUD_OTLP_ENDPOINT=https://otlp-gateway-<region>.grafana.net/otlp` (alloy -> Grafana Cloud)
+- `GRAFANA_CLOUD_ACCOUNT_ID=<stack_account_id>`
+- `GRAFANA_CLOUD_API_TOKEN=<cloud_api_token>`
+
+Important:
+- keep both worker endpoint variables pointed at `http://alloy:4317`
+- do not set `OTEL_EXPORTER_OTLP_ENDPOINT` to Grafana Cloud in compose env files
+- only `GRAFANA_CLOUD_OTLP_ENDPOINT` should point to the Grafana OTLP gateway
+
+Optional WhatsApp worker:
 
 ```bash
 docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-whatsapp
 ```
 
-Optional overrides:
-
-- `RUSTY_PINCH_HOST_STATE_DIR=/opt/rusty-pinch/state` (host persistence root)
-- `RUSTY_PINCH_IMAGE=rusty-pinch:pi-local`
-
-## Optional: Codex integration in container
-
-Host Rust installation is not required. The image build compiles Rust in a builder stage.
-
-To include Codex CLI in the runtime image, enable build arg `INSTALL_CODEX_CLI`:
+Optional image override:
 
 ```bash
-cd rusty-pinch/deploy/container
-export RUSTY_PINCH_INSTALL_CODEX_CLI=true
-docker-compose -f docker-compose.rpi.yml build rusty-pinch-telegram
+export RUSTY_PINCH_IMAGE=ghcr.io/fred-vu/rusty-pinch:v1.0.0
+docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
 ```
 
-Then configure runtime env in `rusty-pinch.rpi.env`:
+## Watchtower auto-update
+
+`watchtower` is included in `docker-compose.rpi.yml`.
+
+- default poll interval: `300` seconds
+- override interval:
+
+```bash
+export WATCHTOWER_POLL_INTERVAL_SECS=900
+docker-compose -f docker-compose.rpi.yml up -d watchtower
+```
+
+## GHCR auth (if package is private)
+
+```bash
+printf '%s' "$GHCR_CLASSIC_PAT" | docker login ghcr.io -u fred-vu --password-stdin
+```
+
+## Codex runtime notes
+
+Published GHCR image is built with Codex CLI included.
+
+Recommended env settings in `rusty-pinch.rpi.env`:
 
 - `RUSTY_PINCH_CODEX_ENABLED=true`
+- `CODEX_HOME=/var/lib/rusty-pinch/codex-home`
 - `RUSTY_PINCH_CODEX_CLI_BIN=codex`
-- `RUSTY_PINCH_CODEX_CLI_ARGS="exec --skip-git-repo-check"`
+- `RUSTY_PINCH_CODEX_CLI_ARGS=exec --skip-git-repo-check`
 - `RUSTY_PINCH_CODEX_PROMPT_FLAG=`
 - `RUSTY_PINCH_CODEX_AUTO_LOGIN=true`
-- `RUSTY_PINCH_CODEX_AUTO_LOGIN_MODE=chatgpt`
-- `RUSTY_PINCH_CODEX_CHATGPT_DEVICE_AUTH=true`
 
-`--skip-git-repo-check` is required because the runtime workdir in this image is not a git repository.
+Persistence notes:
 
-Optional account/env wiring:
+- `./codex-home` is the durable Codex auth state mount. Keep this directory across updates.
+- avoid `docker-compose down -v` when you need to keep Codex login state.
+- avoid `git clean -fdx` inside `deploy/container` unless you accept re-login.
 
-- `RUSTY_PINCH_OPENAI_API_KEY=<key>`
-- `RUSTY_PINCH_CODEX_ACCOUNTS=primary|RUSTY_PINCH_OPENAI_API_KEY|200|gpt-5-codex`
-
-Auth bootstrap behavior:
-
-- container entrypoint auto-checks `codex login status`
-- login state is persisted in mounted `codex-home` volume
-- when mode is `chatgpt`, entrypoint runs `codex login --device-auth` if session is missing
-- when mode is `api-key`, entrypoint runs `codex login --with-api-key` using `RUSTY_PINCH_CODEX_AUTO_LOGIN_API_KEY_ENV` (default `RUSTY_PINCH_OPENAI_API_KEY`)
-- in some Raspberry Pi deployments, recreate/restart may still lose active ChatGPT session and require manual login again
-
-Manual fallback command:
-
-```bash
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth
-```
-
-If session is lost after restart/recreate, rerun:
+Manual login fallback:
 
 ```bash
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
-```
-
-Smoke-check from running worker:
-
-```bash
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex --version
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch codex status
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch codex generate --prompt "ping" --purpose "smoke"
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram /bin/sh -lc 'printf "CODEX_HOME=%s\n" "$CODEX_HOME"'
 ```
 
 ## Logs and health
 
 ```bash
-docker-compose -f docker-compose.example.yml logs -f rusty-pinch-telegram
+docker-compose -f docker-compose.rpi.yml ps
+docker-compose -f docker-compose.rpi.yml logs -f rusty-pinch-telegram
+docker-compose -f docker-compose.rpi.yml logs -f alloy
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch doctor
 ```
 
 Expected signals:
 
 - startup log with `event=channel_start`
-- per-turn log with `event=turn`
-- graceful stop signal logs on shutdown
+- traffic log with `event=turn`
 
-Raspberry Pi logs/health:
+## Grafana OTLP quick-check
 
 ```bash
-docker-compose -f docker-compose.rpi.yml logs -f rusty-pinch-telegram
-docker-compose -f docker-compose.rpi.yml ps
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram /bin/sh -lc 'printf "rp=%s\notel=%s\n" "$RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT" "$OTEL_EXPORTER_OTLP_ENDPOINT"'
+docker-compose -f docker-compose.rpi.yml exec alloy /bin/sh -lc 'printf "cloud=%s\nacct=%s\ntoken_len=%s\n" "$GRAFANA_CLOUD_OTLP_ENDPOINT" "$GRAFANA_CLOUD_ACCOUNT_ID" "${#GRAFANA_CLOUD_API_TOKEN}"'
+docker-compose -f docker-compose.rpi.yml logs --tail=300 alloy | egrep -i "Exporting failed|401|403|unauth|denied|retry"
 ```
 
-## Monitor from Compose
-
-One-shot snapshot from the running Telegram worker:
+## Monitor
 
 ```bash
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once
-```
-
-Live monitor view (inside container, PID 1):
-
-```bash
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --pid 1 --interval-ms 1000
-```
-
-## Common incident: OpenRouter auth failure
-
-Symptom in logs:
-
-- `provider_error=Failed to authenticate request with Clerk`
-
-Triage:
-
-1. Run `doctor` in the running container:
-
-```bash
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch doctor
-```
-
-2. Verify key source (avoid ambiguous generic key overrides):
-
-```bash
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram /bin/sh -lc 'env | grep -E "RUSTY_PINCH_(API_KEY|OPENROUTER_API_KEY|PROVIDER|MODEL|OPENROUTER_API_BASE)"'
-```
-
-3. After env/key update, recreate worker:
-
-```bash
-docker-compose -f docker-compose.rpi.yml up -d --force-recreate rusty-pinch-telegram
 ```

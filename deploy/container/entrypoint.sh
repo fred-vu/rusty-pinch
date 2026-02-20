@@ -25,11 +25,38 @@ codex_status_capture() {
 ensure_codex_home() {
   if [ -z "${CODEX_HOME:-}" ]; then
     CODEX_HOME="${RUSTY_PINCH_CODEX_HOME:-/var/lib/rusty-pinch/codex-home}"
-    export CODEX_HOME
   fi
+  export CODEX_HOME
+  RUSTY_PINCH_CODEX_HOME="${RUSTY_PINCH_CODEX_HOME:-$CODEX_HOME}"
+  export RUSTY_PINCH_CODEX_HOME
 
   mkdir -p "$CODEX_HOME"
   chmod 700 "$CODEX_HOME" 2>/dev/null || true
+
+  # Keep legacy ~/.codex path pointed at CODEX_HOME so manual `docker-compose exec codex ...`
+  # writes into the persistent mount too.
+  home_codex="${HOME:-/root}/.codex"
+  if [ "$home_codex" != "$CODEX_HOME" ]; then
+    mkdir -p "$(dirname "$home_codex")" 2>/dev/null || true
+
+    if [ -L "$home_codex" ]; then
+      ln -sfn "$CODEX_HOME" "$home_codex" 2>/dev/null || true
+      return 0
+    fi
+
+    if [ ! -e "$home_codex" ]; then
+      ln -s "$CODEX_HOME" "$home_codex" 2>/dev/null || true
+      return 0
+    fi
+
+    if [ -d "$home_codex" ]; then
+      if [ -z "$(ls -A "$CODEX_HOME" 2>/dev/null)" ]; then
+        cp -a "$home_codex"/. "$CODEX_HOME"/ 2>/dev/null || true
+        chmod 700 "$CODEX_HOME" 2>/dev/null || true
+        log "migrated codex auth state from $home_codex to $CODEX_HOME"
+      fi
+    fi
+  fi
 }
 
 restore_chatgpt_auth_material() {
@@ -97,7 +124,7 @@ bootstrap_codex_login() {
   fi
 
   if ! command -v codex >/dev/null 2>&1; then
-    log "codex integration enabled but codex CLI not found; rebuild with RUSTY_PINCH_INSTALL_CODEX_CLI=true"
+    log "codex integration enabled but codex CLI not found; use GHCR prebuilt image or rebuild with RUSTY_PINCH_INSTALL_CODEX_CLI=true"
     return 0
   fi
 

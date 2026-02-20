@@ -1,3 +1,4 @@
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -27,11 +28,11 @@ pub struct SkillManager {
 
 impl SkillManager {
     pub fn new(skills_dir: impl AsRef<Path>) -> Result<Self> {
-        Self::with_limits(
-            skills_dir,
-            DEFAULT_MAX_SCRIPT_BYTES,
-            DEFAULT_HTTP_TIMEOUT_SECS,
-        )
+        let http_timeout_secs = env::var("RUSTY_PINCH_SKILL_HTTP_TIMEOUT_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_HTTP_TIMEOUT_SECS);
+        Self::with_limits(skills_dir, DEFAULT_MAX_SCRIPT_BYTES, http_timeout_secs)
     }
 
     pub fn with_limits(
@@ -55,6 +56,66 @@ impl SkillManager {
 
     pub fn skills_dir(&self) -> &Path {
         &self.skills_dir
+    }
+
+    pub fn sync_from_assets(&self, assets_dir: impl AsRef<Path>) -> Result<usize> {
+        let assets_dir = assets_dir.as_ref();
+        if !assets_dir.exists() {
+            return Ok(0);
+        }
+        if !assets_dir.is_dir() {
+            return Err(anyhow!(
+                "assets skills path is not a directory: {}",
+                assets_dir.display()
+            ));
+        }
+
+        let mut copied = 0usize;
+        for entry in fs::read_dir(assets_dir)
+            .with_context(|| format!("failed reading assets skills dir {}", assets_dir.display()))?
+        {
+            let entry = entry.with_context(|| {
+                format!(
+                    "failed reading entry in assets skills dir {}",
+                    assets_dir.display()
+                )
+            })?;
+            let source = entry.path();
+            if source.extension().and_then(|v| v.to_str()) != Some("rhai") {
+                continue;
+            }
+
+            let stem = source
+                .file_stem()
+                .and_then(|v| v.to_str())
+                .ok_or_else(|| anyhow!("invalid asset skill filename '{}'", source.display()))?;
+            let skill_name = normalize_skill_name(stem)?;
+            let destination = self.skills_dir.join(format!("{}.rhai", skill_name));
+            if destination.exists() {
+                if should_refresh_existing_asset_skill(&skill_name, &destination)? {
+                    fs::copy(&source, &destination).with_context(|| {
+                        format!(
+                            "failed refreshing asset skill '{}' at '{}'",
+                            source.display(),
+                            destination.display()
+                        )
+                    })?;
+                    copied = copied.saturating_add(1);
+                }
+                continue;
+            }
+
+            fs::copy(&source, &destination).with_context(|| {
+                format!(
+                    "failed copying asset skill '{}' to '{}'",
+                    source.display(),
+                    destination.display()
+                )
+            })?;
+            copied = copied.saturating_add(1);
+        }
+
+        Ok(copied)
     }
 
     pub fn list_skills(&self) -> Result<Vec<SkillSpec>> {
@@ -363,6 +424,23 @@ fn normalize_skill_name(raw: &str) -> Result<String> {
     Ok(trimmed.to_string())
 }
 
+fn should_refresh_existing_asset_skill(skill_name: &str, destination: &Path) -> Result<bool> {
+    if skill_name != "weather" {
+        return Ok(false);
+    }
+
+    let script = fs::read_to_string(destination)
+        .with_context(|| format!("failed reading existing skill '{}'", destination.display()))?;
+    let legacy_signatures = [
+        "return location.replace(\" \", \"+\");",
+        "return \"London\";",
+        "// WEATHER_SKILL_VERSION=1",
+    ];
+    Ok(legacy_signatures
+        .iter()
+        .any(|signature| script.contains(signature)))
+}
+
 fn is_main_signature_mismatch(error: &EvalAltResult) -> bool {
     let text = error.to_string();
     text.contains("Function not found")
@@ -458,5 +536,110 @@ fn main() {
             .run("blocked_http", "")
             .expect_err("localhost should be blocked");
         assert!(err.to_string().contains("blocked"));
+    }
+
+    #[test]
+    fn sync_from_assets_copies_missing_skills() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let workspace_skills = dir.path().join("workspace-skills");
+        let assets_skills = dir.path().join("assets-skills");
+        std::fs::create_dir_all(&assets_skills).expect("create assets dir");
+        std::fs::write(
+            assets_skills.join("weather.rhai"),
+            r#"
+fn main() {
+    return "weather-ok";
+}
+"#,
+        )
+        .expect("write asset weather");
+
+        let manager = SkillManager::new(&workspace_skills).expect("manager");
+        let copied = manager
+            .sync_from_assets(&assets_skills)
+            .expect("sync from assets");
+        assert_eq!(copied, 1);
+
+        let out = manager.run("weather", "").expect("run weather");
+        assert_eq!(out, "weather-ok");
+    }
+
+    #[test]
+    fn sync_from_assets_does_not_overwrite_existing_workspace_skill() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let workspace_skills = dir.path().join("workspace-skills");
+        let assets_skills = dir.path().join("assets-skills");
+        std::fs::create_dir_all(&assets_skills).expect("create assets dir");
+        std::fs::write(
+            assets_skills.join("weather.rhai"),
+            r#"
+fn main() {
+    return "from-assets";
+}
+"#,
+        )
+        .expect("write asset weather");
+
+        let manager = SkillManager::new(&workspace_skills).expect("manager");
+        manager
+            .write_skill(
+                "weather",
+                r#"
+fn main() {
+    return "from-workspace";
+}
+"#,
+            )
+            .expect("write workspace weather");
+
+        let copied = manager
+            .sync_from_assets(&assets_skills)
+            .expect("sync from assets");
+        assert_eq!(copied, 0);
+
+        let out = manager.run("weather", "").expect("run weather");
+        assert_eq!(out, "from-workspace");
+    }
+
+    #[test]
+    fn sync_from_assets_refreshes_legacy_weather_skill() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let workspace_skills = dir.path().join("workspace-skills");
+        let assets_skills = dir.path().join("assets-skills");
+        std::fs::create_dir_all(&assets_skills).expect("create assets dir");
+        std::fs::write(
+            assets_skills.join("weather.rhai"),
+            r#"
+fn main() {
+    return "fixed-weather";
+}
+"#,
+        )
+        .expect("write asset weather");
+
+        let manager = SkillManager::new(&workspace_skills).expect("manager");
+        manager
+            .write_skill(
+                "weather",
+                r#"
+fn normalize_location(raw_location) {
+    let location = raw_location;
+    return location.replace(" ", "+");
+}
+
+fn main() {
+    return normalize_location("London");
+}
+"#,
+            )
+            .expect("write workspace weather");
+
+        let copied = manager
+            .sync_from_assets(&assets_skills)
+            .expect("sync from assets");
+        assert_eq!(copied, 1);
+
+        let out = manager.run("weather", "").expect("run weather");
+        assert_eq!(out, "fixed-weather");
     }
 }

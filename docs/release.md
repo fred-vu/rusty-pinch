@@ -65,8 +65,9 @@ Suggested first-run on Pi host:
 ```bash
 cd deploy/container
 cp rusty-pinch.rpi.env.example rusty-pinch.rpi.env
-mkdir -p ./state/data ./state/workspace
-docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
+mkdir -p ./data ./workspace ./skills ./codex-home
+docker compose -f docker-compose.rpi.yml pull
+docker compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram watchtower
 ```
 
 ## CI release flow
@@ -75,6 +76,9 @@ docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
   - `cargo fmt --check`
   - `cargo build --locked`
   - `cargo test --locked`
+- `docker-publish.yml` (push to `main`, tag push `v*`, or manual dispatch):
+  - buildx pipeline publishes `linux/arm64` image to GHCR
+  - `latest` tag on default branch + version tags on `v*`
 - `release.yml` (tag push `v*` or manual dispatch):
   - release gate (`fmt` + tests on Linux)
   - matrix release builds:
