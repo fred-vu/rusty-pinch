@@ -41,6 +41,10 @@ Edit `rusty-pinch.rpi.env` and set at minimum:
 - `GRAFANA_CLOUD_ACCOUNT_ID=<stack_account_id>`
 - `GRAFANA_CLOUD_API_TOKEN=<cloud_api_token>`
 
+Rules to avoid self-loop/export issues:
+- keep both worker endpoint vars (`RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_ENDPOINT`) on `http://alloy:4317`
+- only `GRAFANA_CLOUD_OTLP_ENDPOINT` points to Grafana Cloud OTLP gateway
+
 ## 4. Authenticate to GHCR (if package is private)
 
 Use a PAT classic with `read:packages`:
@@ -85,6 +89,14 @@ If ChatGPT auth is not active:
 
 ```bash
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth
+```
+
+Grafana OTLP quick-check:
+
+```bash
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram /bin/sh -lc 'printf "rp=%s\notel=%s\n" "$RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT" "$OTEL_EXPORTER_OTLP_ENDPOINT"'
+docker-compose -f docker-compose.rpi.yml exec alloy /bin/sh -lc 'printf "cloud=%s\nacct=%s\ntoken_len=%s\n" "$GRAFANA_CLOUD_OTLP_ENDPOINT" "$GRAFANA_CLOUD_ACCOUNT_ID" "${#GRAFANA_CLOUD_API_TOKEN}"'
+docker-compose -f docker-compose.rpi.yml logs --tail=300 alloy | egrep -i "Exporting failed|401|403|unauth|denied|retry"
 ```
 
 ## 7. Auto-update behavior (Watchtower)
