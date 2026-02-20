@@ -15,6 +15,8 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
 const DEFAULT_OTLP_ENDPOINT: &str = "http://localhost:4317";
+const OTLP_ENDPOINT_OVERRIDE_ENV: &str = "RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT";
+const OTLP_ENDPOINT_ENV: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
 const DEFAULT_SERVICE_NAME: &str = "rusty-pinch";
 const DEFAULT_METRIC_EXPORT_INTERVAL_SECS: u64 = 15;
 
@@ -84,10 +86,16 @@ struct PipelineState {
 }
 
 fn setup_otel_pipeline() -> Result<PipelineState> {
-    let endpoint = env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
+    let endpoint = env::var(OTLP_ENDPOINT_OVERRIDE_ENV)
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+        .or_else(|| {
+            env::var(OTLP_ENDPOINT_ENV)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
         .unwrap_or_else(|| DEFAULT_OTLP_ENDPOINT.to_string());
     let service_name = env::var("OTEL_SERVICE_NAME")
         .ok()

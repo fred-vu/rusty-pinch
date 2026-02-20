@@ -155,7 +155,9 @@ Primary variables:
 - `RUSTY_PINCH_TELEMETRY_FILE` (default `${RUSTY_PINCH_DATA_DIR}/telemetry/latest.json`)
 - `RUSTY_PINCH_SKILL_HTTP_TIMEOUT_SECS` (default `20`; timeout for skill `http_get`/`http_post`)
 - `RUSTY_PINCH_ENV_FILE` (optional explicit `.env` file path)
+- `RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT` (optional worker-side OTLP endpoint override)
 - `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://localhost:4317`)
+- `OTEL_EXPORTER_OTLP_HEADERS` (Grafana Cloud auth header string, for example `Authorization=Basic ...`)
 - `OTEL_SERVICE_NAME` (default `rusty-pinch`)
 - `OTEL_METRIC_EXPORT_INTERVAL_SECS` (default `15`)
 - `RUSTY_PINCH_CODEX_ENABLED`
@@ -201,9 +203,8 @@ Primary variables:
 - `RUSTY_PINCH_CHANNELS_WHATSAPP_ENABLED`
 - `RUSTY_PINCH_CHANNELS_WHATSAPP_BRIDGE_URL`
 - `RUSTY_PINCH_CHANNELS_WHATSAPP_ALLOW_FROM`
-- `GRAFANA_CLOUD_OTLP_ENDPOINT` (used by `deploy/config/config.alloy`)
-- `GRAFANA_CLOUD_USER` (Grafana Cloud stack user id)
-- `GRAFANA_CLOUD_TOKEN` (Grafana Cloud API token)
+- `GRAFANA_CLOUD_OTLP_ENDPOINT` (optional endpoint alias consumed by Alloy exporter)
+- `GRAFANA_CLOUD_OTLP_AUTHORIZATION` (optional explicit Authorization header value consumed by Alloy exporter)
 
 Common key/base overrides:
 
@@ -264,7 +265,7 @@ Shutdown behavior:
 - OpenTelemetry producer path:
 - tracing spans include `request_id`/`session_id` on provider + tool execution spans
 - metrics include `tokens_used` counter, `provider_latency_seconds` histogram, and `tool_executions_total` counter
-- OTLP exporter defaults to `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` and degrades gracefully if endpoint is unavailable
+- OTLP exporter uses `RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT` when set, otherwise falls back to `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://localhost:4317`)
 - `stats` returns persisted telemetry:
 - `total_turns`, `ok_turns`, `error_turns`, `provider_turns`, `tool_turns`
 - `last_turn` persists across process restarts

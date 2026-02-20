@@ -45,9 +45,9 @@ docker-compose -f docker-compose.rpi.yml up -d alloy rusty-pinch-telegram watcht
 
 For Grafana Cloud forwarding, set these in `rusty-pinch.rpi.env`:
 
-- `GRAFANA_CLOUD_OTLP_ENDPOINT`
-- `GRAFANA_CLOUD_USER`
-- `GRAFANA_CLOUD_TOKEN`
+- `RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317` (worker -> alloy)
+- `OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-<region>.grafana.net/otlp` (alloy -> Grafana Cloud)
+- `OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <base64(account_id:api_token)>`
 
 Optional WhatsApp worker:
 

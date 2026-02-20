@@ -105,7 +105,7 @@ Telemetry stores aggregate counters and the latest turn record for cross-process
   - OTLP `tool_executions_total` counter by tool/source/status
 - One structured JSON log line is emitted per turn (`event=turn`).
 - OpenTelemetry/tracing pipeline:
-  - startup initializes OTLP exporter (`OTEL_EXPORTER_OTLP_ENDPOINT`, default `http://localhost:4317`)
+  - startup initializes OTLP exporter (`RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT` override, fallback `OTEL_EXPORTER_OTLP_ENDPOINT`, default `http://localhost:4317`)
   - provider/tool execution spans carry `request_id` and `session_id`
   - exporter runs in non-blocking background runtime and degrades gracefully if endpoint is unavailable
 - `stats` endpoint includes persisted telemetry counters and `last_turn`.

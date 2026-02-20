@@ -1350,12 +1350,70 @@ Done:
     - compose syntax check command could not run in this workspace because `docker-compose` binary is unavailable.
 - User request update (2026-02-20):
   - user requested immediate commit + push to GitHub because deployment mode is Raspberry Pi zero-build local.
+- Commit/push execution status (2026-02-20):
+  - created commit:
+    - `afc69b2 feat(observability): add opentelemetry pipeline and grafana alloy deploy`
+    - scope includes Rust OTel instrumentation + Alloy compose/env/docs updates.
+  - push attempts:
+    - `git push origin feat/foundation-isolated-20260220` failed: `Could not resolve host: github.com` (initial network/DNS failure).
+    - escalated retry failed: `could not read Username for 'https://github.com': No such device or address` (no GitHub credential configured in this environment).
+    - SSH fallback push also failed due host key verification / missing SSH auth.
+- Token-auth follow-up (2026-02-20):
+  - user requested using `GITHUB_FINEGRAINED` env var for push.
+  - verification in current environment (sandbox + escalated host shell) shows:
+    - `GITHUB_FINEGRAINED_MISSING`
+  - push cannot proceed until token variable is exported in this execution environment.
+- Token source clarification (2026-02-20):
+  - user clarified token exists in repository `.env`.
+  - verified `.env` contains `GITHUB_FINEGRAINED=` entry.
+  - plan: source `.env` in push command and use token-auth header without printing secret.
+- Push completed with token auth (2026-02-20):
+  - sourced `.env` in command scope and pushed with HTTPS auth header.
+  - remote branch created/pushed:
+    - `feat/foundation-isolated-20260220`
+  - pushed commit:
+    - `afc69b2 feat(observability): add opentelemetry pipeline and grafana alloy deploy`
+- User report update (2026-02-20):
+  - user reports Grafana Cloud connectivity still failing, likely due to incorrect env variable names.
+  - user requested alignment with official doc:
+    - https://grafana.com/docs/grafana-cloud/send-data/otlp/send-data-otlp/
+- Grafana env-name compatibility fix (2026-02-20):
+  - confirmed repo `.env` only had:
+    - `OTEL_EXPORTER_OTLP_ENDPOINT`
+    - `OTEL_SERVICE_NAME`
+  - root cause:
+    - compose profile reused `OTEL_EXPORTER_OTLP_ENDPOINT` for worker->alloy path, conflicting with Grafana doc convention where same var represents cloud endpoint.
+  - implemented fix:
+    - Rust runtime endpoint resolution now supports worker override:
+      - new env: `RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT` (takes precedence)
+      - fallback: `OTEL_EXPORTER_OTLP_ENDPOINT`
+      - file: `src/observability.rs`
+    - compose worker services updated to set only override var:
+      - `deploy/container/docker-compose.rpi.yml`
+      - `deploy/container/docker-compose.example.yml`
+    - Alloy config updated to align with Grafana OTLP env style:
+      - endpoint from `OTEL_EXPORTER_OTLP_ENDPOINT` (with alias fallback `GRAFANA_CLOUD_OTLP_ENDPOINT`)
+      - Authorization header from:
+        - `GRAFANA_CLOUD_OTLP_AUTHORIZATION` OR
+        - parsed `OTEL_EXPORTER_OTLP_HEADERS` (`Authorization=Basic ...`)
+      - file: `deploy/config/config.alloy`
+    - env/docs updated accordingly:
+      - `.env.example`
+      - `deploy/container/rusty-pinch.env.example`
+      - `deploy/container/rusty-pinch.rpi.env.example`
+      - `README.md`
+      - `deploy/container/README.md`
+      - `docs/runbook-raspberry-pi.md`
+      - `docs/architecture.md`
+  - validation:
+    - `cargo check --locked` passed
+    - `cargo test --locked` passed (all tests green)
 
 Now:
-- Preparing scoped commit for OTel/Grafana deliverables and pushing branch to origin.
+- Env-name compatibility fix is implemented and validated locally.
 
 Next:
-- Confirm pushed commit hash/branch and provide Pi zero-build follow-up steps.
+- Commit and push Grafana env-name hotfix so Pi zero-build deploy can pull updated config.
 
 Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: preferred execution mode for skill invocation (only explicit user command vs model-autonomous tool loop).

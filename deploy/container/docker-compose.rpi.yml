@@ -6,7 +6,7 @@ services:
     env_file:
       - ./rusty-pinch.rpi.env
     environment:
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4317}
+      RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT: ${RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4317}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-rusty-pinch}
     command: ["channels", "telegram"]
     depends_on:
@@ -35,7 +35,7 @@ services:
     env_file:
       - ./rusty-pinch.rpi.env
     environment:
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4317}
+      RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT: ${RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4317}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-rusty-pinch}
     command: ["channels", "whatsapp"]
     depends_on:

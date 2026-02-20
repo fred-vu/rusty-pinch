@@ -1,6 +1,23 @@
-otelcol.auth.basic "grafana_cloud" {
-  username = sys.env("GRAFANA_CLOUD_USER")
-  password = sys.env("GRAFANA_CLOUD_TOKEN")
+otelcol.auth.headers "grafana_cloud" {
+  header {
+    action = "upsert"
+    key    = "Authorization"
+    // Supports:
+    // 1) GRAFANA_CLOUD_OTLP_AUTHORIZATION="Basic <base64(account_id:token)>"
+    // 2) OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic <base64(account_id:token)>"
+    value = coalesce(
+      sys.env("GRAFANA_CLOUD_OTLP_AUTHORIZATION"),
+      string.trim_prefix(
+        string.trim_prefix(
+          string.trim_space(
+            string.split(coalesce(sys.env("OTEL_EXPORTER_OTLP_HEADERS"), ""), ",")[0]
+          ),
+          "Authorization="
+        ),
+        "authorization="
+      )
+    )
+  }
 }
 
 otelcol.receiver.otlp "rusty_pinch" {
@@ -28,7 +45,10 @@ otelcol.processor.batch "rusty_pinch" {
 
 otelcol.exporter.otlphttp "grafana_cloud" {
   client {
-    endpoint = sys.env("GRAFANA_CLOUD_OTLP_ENDPOINT")
-    auth     = otelcol.auth.basic.grafana_cloud.handler
+    endpoint = coalesce(
+      sys.env("GRAFANA_CLOUD_OTLP_ENDPOINT"),
+      sys.env("OTEL_EXPORTER_OTLP_ENDPOINT")
+    )
+    auth = otelcol.auth.headers.grafana_cloud.handler
   }
 }
