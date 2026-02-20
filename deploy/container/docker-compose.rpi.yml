@@ -3,7 +3,6 @@ version: "3.3"
 services:
   rusty-pinch-telegram:
     image: ${RUSTY_PINCH_IMAGE:-ghcr.io/fred-vu/rusty-pinch:latest}
-    platform: linux/arm64
     env_file:
       - ./rusty-pinch.rpi.env
     command: ["channels", "telegram"]
@@ -28,7 +27,6 @@ services:
 
   rusty-pinch-whatsapp:
     image: ${RUSTY_PINCH_IMAGE:-ghcr.io/fred-vu/rusty-pinch:latest}
-    platform: linux/arm64
     env_file:
       - ./rusty-pinch.rpi.env
     command: ["channels", "whatsapp"]

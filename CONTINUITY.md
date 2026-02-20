@@ -1021,12 +1021,25 @@ Done:
   - commit: `c0f0015 feat(deploy): adopt zero-build rpi flow with ghcr and watchtower`
   - branch: `feat/foundation-isolated-20260219`
   - push: `origin/feat/foundation-isolated-20260219` updated from `43d4d71` to `c0f0015`
+- Commit + push checkpoint for ledger sync (2026-02-20):
+  - commit: `5f31626 docs: update continuity ledger after zero-build push`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` updated from `c0f0015` to `5f31626`
+- New user request (2026-02-20):
+  - provide concrete Raspberry Pi instructions to pull branch `feat/foundation-isolated-20260219`.
+- Incident report from Raspberry Pi (2026-02-20):
+  - `docker-compose -f docker-compose.rpi.yml pull` failed on host running `docker-compose==1.25.0` with:
+    - `Unsupported config option ... 'platform'`
+  - Root cause:
+    - compose v1.25 parser does not support `platform` key in this file format.
+  - Fix implemented:
+    - removed `platform: linux/arm64` from both services in `deploy/container/docker-compose.rpi.yml` to restore compatibility with legacy docker-compose v1.
 
 Now:
-- Zero-build baseline patch is committed and pushed.
+- Applying compatibility fix for Raspberry Pi `docker-compose` v1 and preparing push instructions.
 
 Next:
-- Wait for user verification on Raspberry Pi pull/deploy flow and follow-up fixes.
+- Commit/push compose compatibility fix and instruct user to pull latest commit then rerun `docker-compose pull`.
 
 Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: zero-touch ChatGPT OAuth in headless containers may still require initial device-auth completion unless auth material is pre-seeded.
