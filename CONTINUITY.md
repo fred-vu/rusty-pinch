@@ -1017,13 +1017,16 @@ Done:
   - `cargo test` passed (`95` unit tests + integration tests all green)
   - `sh -n deploy/container/entrypoint.sh` passed
   - `docker compose ... config` could not run in this workspace (`docker: command not found`)
+- Commit + push checkpoint for zero-build baseline (2026-02-20):
+  - commit: `c0f0015 feat(deploy): adopt zero-build rpi flow with ghcr and watchtower`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` updated from `43d4d71` to `c0f0015`
 
 Now:
-- User approved immediate commit + push for zero-build baseline patch.
-- In progress: stage final scope and push to `origin/feat/foundation-isolated-20260219`.
+- Zero-build baseline patch is committed and pushed.
 
 Next:
-- Report commit hash and pushed branch status.
+- Wait for user verification on Raspberry Pi pull/deploy flow and follow-up fixes.
 
 Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: zero-touch ChatGPT OAuth in headless containers may still require initial device-auth completion unless auth material is pre-seeded.
