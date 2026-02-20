@@ -67,11 +67,12 @@ docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch s
 - `"forecast|<location>"` -> forecast
 - `"rain|<location>"` -> precipitation-focused
 - `"detail|<location>"` -> detailed current
-- args rỗng -> dùng mặc định `London`
+- args rỗng / `"here"` / `"ở đây"` -> dùng IP location hiện tại
 
 ## Lưu ý vận hành
 
 - Skill dùng `https://wttr.in`, nên cần outbound network.
 - Nếu timeout (`curl code 28`), kiểm tra DNS/network từ host/container.
-- Vì sync là **copy-if-missing**, nếu bạn đã có file `workspace/skills/weather.rhai` cũ thì bản mới trong `assets/skills/` sẽ không ghi đè.
-  - Muốn cập nhật từ `assets`, hãy xóa file cũ trong `${RUSTY_PINCH_WORKSPACE}/skills/` rồi restart app/container.
+- Có thể chỉnh timeout qua env `RUSTY_PINCH_SKILL_HTTP_TIMEOUT_SECS` (mặc định 20s).
+- Runtime sẽ tự refresh một số bản `weather.rhai` legacy đã biết lỗi khi app khởi động.
+- Nếu bạn có custom `weather.rhai`, nên backup trước khi đổi phiên bản lớn.

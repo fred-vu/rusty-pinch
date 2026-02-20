@@ -1184,14 +1184,106 @@ Done:
     - `docs/production-healthcheck.md`
     - `README.md`
     - `CONTINUITY.md`
+- New request intake (2026-02-20):
+  - User shared runtime conversation where the assistant cannot execute `weather` skill automatically and emits repeated `/skills weather --args Paris`.
+  - User suggests adding tool pathway so agent can invoke skills in normal conversation.
+- Analysis checkpoint for skill invocation gap (2026-02-20):
+  - Confirmed current runtime only executes tools on explicit inbound user command `/tool ...` via `parse_tool_invocation` in `src/tools.rs`.
+  - Confirmed provider outputs are returned as plain assistant text without action-execution loop in `src/app.rs` (no automatic execution for emitted `/skills ...` text).
+  - Confirmed `skills` command path exists in CLI (`src/main.rs`) but is not exposed as chat runtime tool invocation pathway.
+- Implemented agent-usable skill invocation tooling + bounded assistant tool loop (2026-02-20):
+  - `src/tools.rs`:
+    - extended `ToolContext` with optional `skills` runtime reference
+    - added built-in tools:
+      - `skill_list` (`/tool skill_list`)
+      - `skill_run` (`/tool skill_run <skill_name> [skill_args]`)
+    - added tests:
+      - `skill_run_requires_skill_runtime_context`
+      - `skill_run_executes_skill_when_runtime_is_available`
+    - updated deterministic built-in tools ordering tests.
+  - `src/app.rs`:
+    - provider turn flow now supports bounded assistant action execution (`MAX_ASSISTANT_TOOL_STEPS=2`)
+    - if assistant emits single-line `/tool ...`, runtime executes tool, injects result as `system` context, then asks provider for final user-facing response
+    - added compatibility parser mapping legacy single-line `/skills <name> --args ...` to `skill_run`
+    - added bounded-loop guard message when model keeps emitting tool commands beyond limit
+    - added unit tests for assistant action parsing/mapping.
+  - docs updated:
+    - `README.md`
+    - `docs/architecture.md`
+    - include new tools and bounded assistant tool-action behavior.
+  - integration test updates:
+    - `tests/tools.rs` built-in tool list expectation now includes `skill_list` and `skill_run`.
+- Validation after skill tool/action-loop patch:
+  - `cargo fmt --all` passed
+  - `cargo test --quiet` passed (`102` tests + integration suites all green)
+- New user validation report (2026-02-20):
+  - `skill_run weather London` returns location near host IP (`Chatou, France`) instead of requested city.
+  - Indicates weather skill location argument is not being applied correctly in outbound wttr query.
+- Root-cause + fix for weather skill location fallback (2026-02-20):
+  - Root cause:
+    - in Rhai runtime, `replace()` usage in weather skill returned empty result when used as return expression in current script style.
+    - `normalize_location` effectively produced empty location, causing `wttr.in` fallback to requester IP geolocation.
+  - Fixes implemented:
+    - `assets/skills/weather.rhai`: changed `normalize_location` to mutate then return `location`:
+      - from: `return location.replace(" ", "+");`
+      - to: `location.replace(" ", "+"); return location;`
+    - `src/skills.rs` `sync_from_assets(...)`:
+      - added targeted legacy refresh path for existing workspace `weather.rhai` containing known buggy line
+      - refreshes only that legacy weather script while preserving normal “do not overwrite existing workspace skills” behavior.
+    - added regression test:
+      - `skills::tests::sync_from_assets_refreshes_legacy_weather_skill`
+- Validation after weather skill fix:
+  - `cargo fmt --all` passed
+  - `cargo test --quiet` passed (`103` tests + integration suites all green)
+  - runtime verification:
+    - `cargo run -- run --session s1 --message "/tool skill_run weather London"`
+    - output now correctly returns `London` weather (no IP-location fallback).
+- New user validation report (2026-02-20, follow-up):
+  - user still sees `/tool skill_run weather London` failing with generic error `tool 'skill_run' execution failed`.
+  - observed ~20s duration strongly suggests HTTP timeout path from weather skill runtime.
+  - current `/tool` telemetry/error path truncates root cause details.
+- Diagnostics + error-visibility hardening (2026-02-20):
+  - reproduced and validated that weather command can succeed, but transient network conditions can still produce timeout failures around default 20s skill HTTP timeout.
+  - improved error visibility:
+    - `src/app.rs` tool turn error path now records full anyhow chain (`format!("{:#}", err)`) instead of top-level context only.
+    - `src/app.rs` skills run error path now records full anyhow chain.
+  - added integration regression:
+    - `tests/tools.rs::tool_skill_run_surfaces_root_cause_error_details`
+  - validation:
+    - `cargo fmt --all` passed
+    - `cargo test --quiet` passed (`103` tests + integration suites all green)
+- Weather behavior update for "here"/empty-location + timeout configurability (2026-02-20):
+  - `assets/skills/weather.rhai`:
+    - no-location default now uses wttr IP location (instead of hardcoded `London`)
+    - added aliases for current-place requests (`here`, `ở đây`, etc.) to force auto-IP mode
+    - switched URL builder to use `https://wttr.in?...` when location is empty
+    - added script version marker `WEATHER_SKILL_VERSION=2`
+  - `src/skills.rs`:
+    - `SkillManager::new` now reads `RUSTY_PINCH_SKILL_HTTP_TIMEOUT_SECS` (default `20`)
+    - legacy weather script refresh detection expanded (refreshes known v1/London defaults and old replace pattern)
+  - docs/env updates:
+    - `.env.example`
+    - `deploy/container/rusty-pinch.env.example`
+    - `deploy/container/rusty-pinch.rpi.env.example`
+    - `README.md`
+    - `assets/skills/README.md`
+  - runtime verification:
+    - `cargo run -- run --session s2 --message "/tool skill_run weather ở đây"`
+    - output now succeeds and logs `location=(auto-ip)` with wttr IP-based location result.
+  - validation:
+    - `cargo fmt --all` passed
+    - `cargo test --quiet` passed (`103` tests + integration suites all green)
+- User request update (2026-02-20):
+  - user requested branch rename to today's date before commit/push.
 
 Now:
-- Codex auth persistence patch is committed/pushed; waiting for Raspberry Pi pull/recreate verification.
+- Rename current working branch to a 2026-02-20 date-based name, then commit and push pending patch set.
 
 Next:
-- User pulls latest branch/main on Raspberry Pi, recreates service, and verifies `codex login status` survives restart.
+- After push, report new branch name and commit hashes for user pull.
 
 Open questions (UNCONFIRMED if needed):
+- UNCONFIRMED: preferred execution mode for skill invocation (only explicit user command vs model-autonomous tool loop).
 - UNCONFIRMED: whether to keep current compact capability inventory format or expand with richer per-skill descriptions/examples.
 - UNCONFIRMED: zero-touch ChatGPT OAuth in headless containers may still require initial device-auth completion unless auth material is pre-seeded.
 - UNCONFIRMED: whether Raspberry Pi checkout includes commit `97f9172` (Codex install/build-arg + auto-login support).

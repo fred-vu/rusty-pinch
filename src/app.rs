@@ -18,12 +18,13 @@ use crate::evolution::{
 use crate::prompt::PromptBuilder;
 use crate::provider;
 use crate::pulse::{OodaObservation, PulseAction, PulseRuntime};
-use crate::session::SessionStore;
+use crate::session::{Message, SessionStore};
 use crate::skills::SkillManager;
 use crate::telemetry::{TelemetryStore, TurnRecord};
-use crate::tools::{parse_tool_invocation, ToolContext, ToolRegistry, ToolSpec};
+use crate::tools::{parse_tool_invocation, ToolContext, ToolInvocation, ToolRegistry, ToolSpec};
 
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
+const MAX_ASSISTANT_TOOL_STEPS: usize = 2;
 
 pub struct RustyPinchApp {
     settings: Settings,
@@ -203,7 +204,7 @@ impl RustyPinchApp {
                     Ok(response)
                 }
                 Err(err) => {
-                    let message = err.to_string();
+                    let message = format!("{:#}", err);
                     self.record_turn(TurnRecord {
                         timestamp: Utc::now().to_rfc3339(),
                         request_id: request_id.clone(),
@@ -257,110 +258,79 @@ impl RustyPinchApp {
             user_input,
         );
 
-        let (response, provider_attempts, provider_latency_ms) =
-            if self.settings.provider == "codex" {
-                let purpose = format!("provider_turn:{}", session_id);
-                let submit_result = {
-                    let codex = match self.codex_mut() {
-                        Ok(codex) => codex,
-                        Err(err) => {
-                            let message = err.to_string();
-                            self.record_turn(TurnRecord {
-                                timestamp: Utc::now().to_rfc3339(),
-                                request_id: request_id.clone(),
-                                session_id: session_id.to_string(),
-                                path: "provider".to_string(),
-                                status: "error".to_string(),
-                                provider: self.settings.provider.clone(),
-                                model: self.settings.model.clone(),
-                                tool_name: None,
-                                attempts: None,
-                                latency_ms: None,
-                                user_chars: user_input.chars().count(),
-                                response_chars: 0,
-                                error: Some(message.clone()),
-                            });
-                            return Err(anyhow!("request_id={}: {}", request_id, message));
-                        }
-                    };
-                    codex.submit(&prompt, &purpose)
-                };
+        let (mut response, mut provider_attempts, mut provider_latency_ms) = self
+            .generate_provider_response(&request_id, session_id, &history, &prompt, user_input)?;
 
-                if let Some(codex_runtime) = self.codex.as_mut() {
-                    let status = codex_runtime.status();
-                    self.record_codex_status_snapshot(&status);
-                }
-
-                match submit_result {
-                    Ok(CodexSubmitResult::Executed(exec)) => {
-                        (exec.output, Some(1), Some(exec.latency_ms))
-                    }
-                    Ok(CodexSubmitResult::Queued {
-                        task_id,
-                        queue_depth,
-                        reason,
-                    }) => (
-                        format!(
-                            "[codex:queued] task_id={} queue_depth={} reason={}",
-                            task_id, queue_depth, reason
-                        ),
-                        Some(0),
-                        None,
-                    ),
-                    Err(err) => {
-                        let message = err.to_string();
-                        self.record_turn(TurnRecord {
-                            timestamp: Utc::now().to_rfc3339(),
-                            request_id: request_id.clone(),
-                            session_id: session_id.to_string(),
-                            path: "provider".to_string(),
-                            status: "error".to_string(),
-                            provider: self.settings.provider.clone(),
-                            model: self.settings.model.clone(),
-                            tool_name: None,
-                            attempts: Some(1),
-                            latency_ms: None,
-                            user_chars: user_input.chars().count(),
-                            response_chars: 0,
-                            error: Some(message.clone()),
-                        });
-                        return Err(anyhow!("request_id={}: {}", request_id, message));
-                    }
-                }
-            } else {
-                let completion = match provider::chat_completion_with_metrics(
-                    &self.settings,
-                    &history,
-                    &prompt,
-                    user_input,
-                ) {
-                    Ok(response) => response,
-                    Err(err) => {
-                        let message = err.to_string();
-                        self.record_turn(TurnRecord {
-                            timestamp: Utc::now().to_rfc3339(),
-                            request_id: request_id.clone(),
-                            session_id: session_id.to_string(),
-                            path: "provider".to_string(),
-                            status: "error".to_string(),
-                            provider: self.settings.provider.clone(),
-                            model: self.settings.model.clone(),
-                            tool_name: None,
-                            attempts: Some(err.metrics.attempts),
-                            latency_ms: Some(err.metrics.latency_ms),
-                            user_chars: user_input.chars().count(),
-                            response_chars: 0,
-                            error: Some(message.clone()),
-                        });
-                        return Err(anyhow!("request_id={}: {}", request_id, message));
-                    }
-                };
-                (
-                    completion.content,
-                    Some(completion.metrics.attempts),
-                    Some(completion.metrics.latency_ms),
-                )
+        let mut assistant_tool_context_messages = Vec::new();
+        let mut assistant_tool_steps = 0usize;
+        while assistant_tool_steps < MAX_ASSISTANT_TOOL_STEPS {
+            let tool_call = match parse_assistant_tool_action(&response) {
+                Some(call) => call,
+                None => break,
             };
+
+            assistant_tool_steps = assistant_tool_steps.saturating_add(1);
+            if assistant_tool_context_messages.is_empty() {
+                assistant_tool_context_messages.push(Message {
+                    role: "user".to_string(),
+                    content: user_input.to_string(),
+                    timestamp: Utc::now().to_rfc3339(),
+                });
+            }
+
+            let tool_command = format_tool_command(&tool_call.name, &tool_call.args);
+            assistant_tool_context_messages.push(Message {
+                role: "assistant".to_string(),
+                content: tool_command,
+                timestamp: Utc::now().to_rfc3339(),
+            });
+
+            let tool_result =
+                match self.execute_tool_for_assistant(session_id, &tool_call.name, &tool_call.args)
+                {
+                    Ok(output) => output,
+                    Err(err) => format!("[tool:{} error] {}", tool_call.name.trim(), err),
+                };
+            assistant_tool_context_messages.push(Message {
+                role: "system".to_string(),
+                content: format!(
+                    "[tool:{} args={}]\n{}",
+                    tool_call.name.trim(),
+                    tool_call.args.trim(),
+                    tool_result
+                ),
+                timestamp: Utc::now().to_rfc3339(),
+            });
+
+            let mut followup_history = history.clone();
+            followup_history.extend(assistant_tool_context_messages.iter().cloned());
+            let followup_user_input = "A tool result is available in the previous system message. Respond directly to the end user using that result. Only emit a `/tool ...` command if one more tool call is strictly required.";
+            let followup_prompt = self.prompt.build(
+                &self.settings.provider,
+                &self.settings.model,
+                &identity,
+                &capabilities,
+                session_id,
+                followup_user_input,
+            );
+
+            let (next_response, next_attempts, next_latency_ms) = self.generate_provider_response(
+                &request_id,
+                session_id,
+                &followup_history,
+                &followup_prompt,
+                followup_user_input,
+            )?;
+
+            provider_attempts = combine_attempt_counts(provider_attempts, next_attempts);
+            provider_latency_ms = combine_latency_ms(provider_latency_ms, next_latency_ms);
+            response = next_response;
+        }
+        if assistant_tool_steps >= MAX_ASSISTANT_TOOL_STEPS
+            && parse_assistant_tool_action(&response).is_some()
+        {
+            response = "Tool execution limit reached for this turn. Please refine your request or run the remaining command manually.".to_string();
+        }
 
         if let Err(err) = self
             .sessions
@@ -444,6 +414,7 @@ impl RustyPinchApp {
             sessions: &self.sessions,
             provider: &self.settings.provider,
             model: &self.settings.model,
+            skills: Some(&self.skills),
         };
         let output = self.tools.execute(name, &ctx, args)?;
         let response = format!("[tool:{}]\n{}", name.trim(), output);
@@ -463,6 +434,149 @@ impl RustyPinchApp {
             .bus
             .publish(format!("tool_out:{}:{}", name.trim(), output));
         Ok(response)
+    }
+
+    fn execute_tool_for_assistant(
+        &mut self,
+        session_id: &str,
+        name: &str,
+        args: &str,
+    ) -> Result<String> {
+        if name.trim().is_empty() {
+            return Err(anyhow!(
+                "assistant tool command missing name. usage: /tool <name> [args]"
+            ));
+        }
+
+        let ctx = ToolContext {
+            session_id,
+            sessions: &self.sessions,
+            provider: &self.settings.provider,
+            model: &self.settings.model,
+            skills: Some(&self.skills),
+        };
+        let output = self.tools.execute(name, &ctx, args)?;
+
+        let _ = self
+            .bus
+            .publish(format!("assistant_tool:{}:{}", name.trim(), args.trim()));
+        let _ = self
+            .bus
+            .publish(format!("assistant_tool_out:{}:{}", name.trim(), &output));
+        Ok(output)
+    }
+
+    fn generate_provider_response(
+        &mut self,
+        request_id: &str,
+        session_id: &str,
+        history: &[Message],
+        prompt: &str,
+        user_input: &str,
+    ) -> Result<(String, Option<u32>, Option<u64>)> {
+        if self.settings.provider == "codex" {
+            let purpose = format!("provider_turn:{}", session_id);
+            let submit_result = {
+                let codex = match self.codex_mut() {
+                    Ok(codex) => codex,
+                    Err(err) => {
+                        let message = err.to_string();
+                        self.record_turn(TurnRecord {
+                            timestamp: Utc::now().to_rfc3339(),
+                            request_id: request_id.to_string(),
+                            session_id: session_id.to_string(),
+                            path: "provider".to_string(),
+                            status: "error".to_string(),
+                            provider: self.settings.provider.clone(),
+                            model: self.settings.model.clone(),
+                            tool_name: None,
+                            attempts: None,
+                            latency_ms: None,
+                            user_chars: user_input.chars().count(),
+                            response_chars: 0,
+                            error: Some(message.clone()),
+                        });
+                        return Err(anyhow!("request_id={}: {}", request_id, message));
+                    }
+                };
+                codex.submit(prompt, &purpose)
+            };
+
+            if let Some(codex_runtime) = self.codex.as_mut() {
+                let status = codex_runtime.status();
+                self.record_codex_status_snapshot(&status);
+            }
+
+            return match submit_result {
+                Ok(CodexSubmitResult::Executed(exec)) => {
+                    Ok((exec.output, Some(1), Some(exec.latency_ms)))
+                }
+                Ok(CodexSubmitResult::Queued {
+                    task_id,
+                    queue_depth,
+                    reason,
+                }) => Ok((
+                    format!(
+                        "[codex:queued] task_id={} queue_depth={} reason={}",
+                        task_id, queue_depth, reason
+                    ),
+                    Some(0),
+                    None,
+                )),
+                Err(err) => {
+                    let message = err.to_string();
+                    self.record_turn(TurnRecord {
+                        timestamp: Utc::now().to_rfc3339(),
+                        request_id: request_id.to_string(),
+                        session_id: session_id.to_string(),
+                        path: "provider".to_string(),
+                        status: "error".to_string(),
+                        provider: self.settings.provider.clone(),
+                        model: self.settings.model.clone(),
+                        tool_name: None,
+                        attempts: Some(1),
+                        latency_ms: None,
+                        user_chars: user_input.chars().count(),
+                        response_chars: 0,
+                        error: Some(message.clone()),
+                    });
+                    Err(anyhow!("request_id={}: {}", request_id, message))
+                }
+            };
+        }
+
+        let completion = match provider::chat_completion_with_metrics(
+            &self.settings,
+            history,
+            prompt,
+            user_input,
+        ) {
+            Ok(response) => response,
+            Err(err) => {
+                let message = err.to_string();
+                self.record_turn(TurnRecord {
+                    timestamp: Utc::now().to_rfc3339(),
+                    request_id: request_id.to_string(),
+                    session_id: session_id.to_string(),
+                    path: "provider".to_string(),
+                    status: "error".to_string(),
+                    provider: self.settings.provider.clone(),
+                    model: self.settings.model.clone(),
+                    tool_name: None,
+                    attempts: Some(err.metrics.attempts),
+                    latency_ms: Some(err.metrics.latency_ms),
+                    user_chars: user_input.chars().count(),
+                    response_chars: 0,
+                    error: Some(message.clone()),
+                });
+                return Err(anyhow!("request_id={}: {}", request_id, message));
+            }
+        };
+        Ok((
+            completion.content,
+            Some(completion.metrics.attempts),
+            Some(completion.metrics.latency_ms),
+        ))
     }
 
     pub fn session_history_json(&self, session_id: &str) -> Result<String> {
@@ -633,7 +747,7 @@ impl RustyPinchApp {
         let output = match self.skills.run(&skill_name, args) {
             Ok(output) => output,
             Err(err) => {
-                let message = err.to_string();
+                let message = format!("{:#}", err);
                 self.record_turn(TurnRecord {
                     timestamp: Utc::now().to_rfc3339(),
                     request_id: request_id.clone(),
@@ -1201,7 +1315,8 @@ Installed skills:
 {}
 
 Skill invocation note:
-- Skills are managed by runtime skill APIs/CLI (`rusty-pinch skills run --name <skill> --args ...`) and are not automatically executed unless an explicit runtime pathway is invoked.",
+- To run a skill from a conversation action, use `/tool skill_run <skill_name> [skill_args]`.
+- Legacy `/skills <skill_name> --args ...` commands may be mapped to `skill_run` when emitted as a single-line assistant action.",
             tool_lines, skills_lines
         )
     }
@@ -1381,6 +1496,91 @@ fn format_tool_command(name: &str, args: &str) -> String {
     }
 }
 
+fn parse_assistant_tool_action(response: &str) -> Option<ToolInvocation> {
+    let trimmed = response.trim();
+    if trimmed.is_empty() || trimmed.contains('\n') {
+        return None;
+    }
+
+    if let Some(call) = parse_tool_invocation(trimmed) {
+        if !call.name.trim().is_empty() {
+            return Some(call);
+        }
+    }
+
+    parse_legacy_skill_action(trimmed)
+}
+
+fn parse_legacy_skill_action(line: &str) -> Option<ToolInvocation> {
+    let rest = line.strip_prefix("/skills")?.trim();
+    if rest.is_empty() {
+        return None;
+    }
+
+    let parts = rest.split_whitespace().collect::<Vec<&str>>();
+    if parts.is_empty() {
+        return None;
+    }
+
+    let skill_name = if parts[0] == "run" {
+        if parts.len() < 2 {
+            return None;
+        }
+        parts[1]
+    } else {
+        parts[0]
+    };
+
+    if skill_name.starts_with('-') {
+        return None;
+    }
+
+    let args_start = parts.iter().position(|part| *part == "--args");
+    let skill_args = if let Some(idx) = args_start {
+        parts
+            .get((idx + 1)..)
+            .unwrap_or(&[])
+            .join(" ")
+            .trim()
+            .to_string()
+    } else if parts[0] == "run" && parts.len() > 2 {
+        parts[2..].join(" ").trim().to_string()
+    } else if parts.len() > 1 {
+        parts[1..].join(" ").trim().to_string()
+    } else {
+        String::new()
+    };
+
+    let mapped_args = if skill_args.is_empty() {
+        skill_name.to_string()
+    } else {
+        format!("{} {}", skill_name, skill_args)
+    };
+
+    Some(ToolInvocation {
+        name: "skill_run".to_string(),
+        args: mapped_args,
+    })
+}
+
+fn combine_attempt_counts(lhs: Option<u32>, rhs: Option<u32>) -> Option<u32> {
+    match (lhs, rhs) {
+        (Some(a), Some(b)) => Some(a.saturating_add(b)),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
+    }
+}
+
+fn combine_latency_ms(lhs: Option<u64>, rhs: Option<u64>) -> Option<u64> {
+    match (lhs, rhs) {
+        (Some(a), Some(b)) => Some(a.saturating_add(b)),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
+    }
+}
+
 fn non_empty(value: String) -> Option<String> {
     if value.trim().is_empty() {
         None
@@ -1472,4 +1672,40 @@ fn run_http_healthcheck_action(
         "http healthcheck ok: url={}, status={}",
         url, status
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_assistant_tool_action, ToolInvocation};
+
+    #[test]
+    fn parse_assistant_tool_action_accepts_tool_command() {
+        let action = parse_assistant_tool_action("/tool time_now").expect("must parse");
+        assert_eq!(
+            action,
+            ToolInvocation {
+                name: "time_now".to_string(),
+                args: String::new()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_assistant_tool_action_maps_legacy_skills_command() {
+        let action =
+            parse_assistant_tool_action("/skills weather --args Paris").expect("must parse");
+        assert_eq!(
+            action,
+            ToolInvocation {
+                name: "skill_run".to_string(),
+                args: "weather Paris".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn parse_assistant_tool_action_rejects_multiline_output() {
+        let action = parse_assistant_tool_action("I will do that now\n/tool time_now");
+        assert!(action.is_none());
+    }
 }

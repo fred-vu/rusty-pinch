@@ -86,6 +86,11 @@ Telemetry stores aggregate counters and the latest turn record for cross-process
   - `model_info`
   - `time_now`
   - `session_tail`
+  - `skill_list`
+  - `skill_run`
+- Provider turns support bounded assistant action execution:
+  - if assistant emits a single-line `/tool ...` command, runtime executes it and requests a final user-facing response
+  - maximum 2 tool-action steps per turn to prevent infinite loops
 
 ## Runtime Observability
 

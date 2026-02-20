@@ -1,5 +1,8 @@
+// WEATHER_SKILL_VERSION=2
+
 fn default_location() {
-    return "London";
+    // Empty location means wttr.in resolves weather from requester IP.
+    return "";
 }
 
 fn normalize_mode(raw_mode) {
@@ -23,11 +26,38 @@ fn normalize_location(raw_location) {
     let location = raw_location;
     location.trim();
 
-    if location.len() == 0 {
+    if is_here_alias(location) {
         return default_location();
     }
 
-    return location.replace(" ", "+");
+    location.replace(" ", "+");
+    return location;
+}
+
+fn is_here_alias(raw_location) {
+    let location = raw_location;
+    location.trim();
+
+    if location.len() == 0 {
+        return true;
+    }
+
+    if location == "here"
+        || location == "Here"
+        || location == "HERE"
+        || location == "local"
+        || location == "Local"
+        || location == "LOCAL"
+        || location == "current"
+        || location == "Current"
+        || location == "CURRENT"
+        || location == "ở đây"
+        || location == "o day"
+        || location == "tai day" {
+        return true;
+    }
+
+    return false;
 }
 
 fn parse_query(raw_args) {
@@ -60,31 +90,40 @@ fn parse_query(raw_args) {
 }
 
 fn build_url(mode, encoded_location) {
+    let base = "https://wttr.in";
+    if encoded_location.len() > 0 {
+        base = base + "/" + encoded_location;
+    }
+
     if mode == "forecast" {
-        return "https://wttr.in/" + encoded_location + "?format=v2";
+        return base + "?format=v2";
     }
 
     if mode == "rain" {
-        return "https://wttr.in/" + encoded_location + "?format=%l:+%c+%p";
+        return base + "?format=%l:+%c+%p";
     }
 
     if mode == "detail" {
-        return "https://wttr.in/" + encoded_location + "?0";
+        return base + "?0";
     }
 
-    return "https://wttr.in/" + encoded_location + "?format=%l:+%c+%t+(feels+like+%f),+%w+wind,+%h+humidity";
+    return base + "?format=%l:+%c+%t+(feels+like+%f),+%w+wind,+%h+humidity";
 }
 
 fn fetch_weather(mode, location) {
     let encoded_location = normalize_location(location);
     let url = build_url(mode, encoded_location);
+    let location_label = if encoded_location.len() == 0 { "(auto-ip)" } else { location };
 
-    log_info("weather skill request mode=" + mode + " location=" + location + " at=" + time_now());
+    log_info("weather skill request mode=" + mode + " location=" + location_label + " at=" + time_now());
 
     let response = http_get(url);
     response.trim();
 
     if response.len() == 0 {
+        if encoded_location.len() == 0 {
+            return "No weather data returned for current IP location";
+        }
         return "No weather data returned for " + location;
     }
 
