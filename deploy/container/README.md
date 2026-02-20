@@ -46,6 +46,7 @@ docker-compose -f docker-compose.rpi.yml up -d alloy rusty-pinch-telegram watcht
 For Grafana Cloud forwarding, set these in `rusty-pinch.rpi.env`:
 
 - `RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317` (worker -> alloy)
+- `OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317` (legacy worker compatibility for older images)
 - `GRAFANA_CLOUD_OTLP_ENDPOINT=https://otlp-gateway-<region>.grafana.net/otlp` (alloy -> Grafana Cloud)
 - `GRAFANA_CLOUD_ACCOUNT_ID=<stack_account_id>`
 - `GRAFANA_CLOUD_API_TOKEN=<cloud_api_token>`
