@@ -976,13 +976,54 @@ Done:
 - Commit scope decision for requested push (2026-02-19):
   - include: `src/app.rs`, `src/skills.rs`, `README.md`, `assets/skills/weather.rhai`, `assets/skills/README.md`, `CONTINUITY.md`
   - exclude (left local, out of scope): `.env.example`, `deploy/container/rusty-pinch.env.example`, `deploy/container/rusty-pinch.rpi.env.example`, `docs/zeroclaw-comparison.md`
+- Commit + push completed for weather/bootstrap/docs delta (2026-02-19):
+  - commit: `43d4d71 feat(skills): bootstrap weather skill from assets`
+  - branch: `feat/foundation-isolated-20260219`
+  - pushed to: `origin/feat/foundation-isolated-20260219`
+- New direction intake (2026-02-20):
+  - user requested to read `docs/zerobuild-local.md` and continue implementation following that approach.
+- Implemented zero-build edge deployment baseline from `docs/zerobuild-local.md` (2026-02-20):
+  - Added GHCR ARM64 publish workflow:
+    - `.github/workflows/docker-publish.yml`
+    - triggers: `main`, `v*` tags, manual dispatch
+    - buildx + qemu + GHCR login via `GITHUB_TOKEN`
+    - publishes `linux/arm64` image tags (`latest`, tag refs, `sha-*`)
+    - image build arg sets `INSTALL_CODEX_CLI=true`
+  - Refactored Raspberry Pi compose profile to consume prebuilt GHCR image (no local build):
+    - `deploy/container/docker-compose.rpi.yml`
+    - removed `build:` directives
+    - default image: `ghcr.io/fred-vu/rusty-pinch:latest`
+    - added explicit bind mounts:
+      - `./data` -> `/var/lib/rusty-pinch/data`
+      - `./workspace` -> `/var/lib/rusty-pinch/workspace`
+      - `./skills` -> `/var/lib/rusty-pinch/workspace/skills`
+      - `./codex-home` -> `/var/lib/rusty-pinch/codex-home`
+    - added `watchtower` service with rolling restart and interval polling
+  - Hardened container image footprint/build determinism:
+    - `deploy/container/Dockerfile` now uses `cargo build --release --locked`
+    - removed unnecessary runtime copies (`docs`, `.env.example`) from final image
+  - Updated runtime/ops docs for zero-build flow:
+    - `deploy/container/README.md`
+    - `docs/runbook-raspberry-pi.md`
+    - `README.md`
+    - `docs/release.md`
+    - `docs/production-healthcheck.md`
+    - `docs/product-specification.md`
+    - `docs/architecture.md`
+  - Updated ignore rules for new Pi bind-mount directories:
+    - `.dockerignore` and `.gitignore`
+  - Updated entrypoint diagnostic log for missing Codex CLI to reference GHCR prebuilt image path.
+- Validation after zero-build baseline patch:
+  - `cargo test` passed (`95` unit tests + integration tests all green)
+  - `sh -n deploy/container/entrypoint.sh` passed
+  - `docker compose ... config` could not run in this workspace (`docker: command not found`)
 
 Now:
-- User requested immediate commit + push for latest weather-skill/bootstrap/documentation changes.
-- In progress: verify commit scope, create commit on `feat/foundation-isolated-20260219`, and push to `origin`.
+- User approved immediate commit + push for zero-build baseline patch.
+- In progress: stage final scope and push to `origin/feat/foundation-isolated-20260219`.
 
 Next:
-- Complete commit + push and report commit hash.
+- Report commit hash and pushed branch status.
 
 Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: zero-touch ChatGPT OAuth in headless containers may still require initial device-auth completion unless auth material is pre-seeded.
@@ -990,6 +1031,7 @@ Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: whether user wants implementation of a new tool to run selected `rusty-pinch` subcommands from Telegram flow.
 - UNCONFIRMED: preferred default location for weather queries when args are empty (currently `London` in skill template).
 - UNCONFIRMED: whether untracked `docs/zeroclaw-comparison.md` should be included in commit scope (currently excluded by default).
+- UNCONFIRMED: whether GHCR package visibility will be public or private in production (impacts Pi `docker login` requirement).
 
 Working set (files/ids/commands):
 - `CONTINUITY.md`
@@ -1012,6 +1054,9 @@ Working set (files/ids/commands):
 - `src/monitor.rs`
 - `.github/workflows/ci.yml`
 - `.github/workflows/release.yml`
+- `.github/workflows/docker-publish.yml`
+- `.dockerignore`
+- `.gitignore`
 - `.env.example`
 - `deploy/container/Dockerfile`
 - `deploy/container/README.md`
@@ -1020,6 +1065,9 @@ Working set (files/ids/commands):
 - `deploy/container/entrypoint.sh`
 - `deploy/container/rusty-pinch.env.example`
 - `deploy/container/rusty-pinch.rpi.env.example`
+- `docs/release.md`
+- `docs/production-healthcheck.md`
+- `docs/zerobuild-local.md`
 - `tests/pulse_persistence.rs`
 - `tests/observability.rs`
 - `tests/evolution_guard.rs`

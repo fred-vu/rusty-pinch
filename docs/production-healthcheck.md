@@ -55,9 +55,10 @@ rusty-pinch channels whatsapp --max-messages 1
 
 Every 2-4 hours:
 
-- `docker-compose -f docker-compose.rpi.yml ps`
-- `docker-compose -f docker-compose.rpi.yml logs --since 2h rusty-pinch-telegram`
-- `docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once`
+- `docker compose -f docker-compose.rpi.yml ps`
+- `docker compose -f docker-compose.rpi.yml logs --since 2h rusty-pinch-telegram`
+- `docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once`
+- `docker compose -f docker-compose.rpi.yml logs --since 2h watchtower`
 - `docker stats --no-stream`
 - `df -h`
 - `free -h`
@@ -84,8 +85,8 @@ Expected:
 4. Codex login lost after container recreate:
 - symptom: `codex login status` shows `Not logged in` and Codex tasks fail.
 - recovery:
-  - `docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth`
-  - `docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status`
+  - `docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth`
+  - `docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status`
 
 ## Release gate recommendation
 

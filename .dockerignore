@@ -3,6 +3,10 @@ target
 
 # Local runtime state mounts (can be root-owned on hosts and must never be sent in build context).
 deploy/container/state
+deploy/container/data
+deploy/container/workspace
+deploy/container/skills
+deploy/container/codex-home
 
 # Local operator secrets.
 deploy/container/*.env

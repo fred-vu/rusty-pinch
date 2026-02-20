@@ -97,7 +97,7 @@ bootstrap_codex_login() {
   fi
 
   if ! command -v codex >/dev/null 2>&1; then
-    log "codex integration enabled but codex CLI not found; rebuild with RUSTY_PINCH_INSTALL_CODEX_CLI=true"
+    log "codex integration enabled but codex CLI not found; use GHCR prebuilt image or rebuild with RUSTY_PINCH_INSTALL_CODEX_CLI=true"
     return 0
   fi
 

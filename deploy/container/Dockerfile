@@ -3,10 +3,8 @@ WORKDIR /work
 
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-COPY assets ./assets
-COPY docs ./docs
 
-RUN cargo build --release
+RUN cargo build --release --locked
 
 FROM debian:bookworm-slim
 ARG INSTALL_CODEX_CLI=false
@@ -22,8 +20,6 @@ RUN apt-get update \
 WORKDIR /opt/rusty-pinch
 COPY --from=builder /work/target/release/rusty-pinch /usr/local/bin/rusty-pinch
 COPY deploy/container/entrypoint.sh /usr/local/bin/rusty-pinch-entrypoint
-COPY .env.example ./.env.example
-COPY docs ./docs
 COPY assets ./assets
 
 RUN chmod +x /usr/local/bin/rusty-pinch-entrypoint

@@ -2,24 +2,23 @@ version: "3.3"
 
 services:
   rusty-pinch-telegram:
-    build:
-      context: ../..
-      dockerfile: deploy/container/Dockerfile
-      args:
-        INSTALL_CODEX_CLI: ${RUSTY_PINCH_INSTALL_CODEX_CLI:-false}
-    image: ${RUSTY_PINCH_IMAGE:-rusty-pinch:pi-local}
+    image: ${RUSTY_PINCH_IMAGE:-ghcr.io/fred-vu/rusty-pinch:latest}
+    platform: linux/arm64
     env_file:
       - ./rusty-pinch.rpi.env
     command: ["channels", "telegram"]
     volumes:
-      - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/data:/var/lib/rusty-pinch/data
-      - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/workspace:/var/lib/rusty-pinch/workspace
-      - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/codex-home:/var/lib/rusty-pinch/codex-home
+      - ./data:/var/lib/rusty-pinch/data
+      - ./workspace:/var/lib/rusty-pinch/workspace
+      - ./skills:/var/lib/rusty-pinch/workspace/skills
+      - ./codex-home:/var/lib/rusty-pinch/codex-home
     healthcheck:
       test: ["CMD", "rusty-pinch", "doctor"]
       interval: 60s
       timeout: 10s
       retries: 3
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     logging:
       driver: json-file
       options:
@@ -28,27 +27,38 @@ services:
     restart: unless-stopped
 
   rusty-pinch-whatsapp:
-    build:
-      context: ../..
-      dockerfile: deploy/container/Dockerfile
-      args:
-        INSTALL_CODEX_CLI: ${RUSTY_PINCH_INSTALL_CODEX_CLI:-false}
-    image: ${RUSTY_PINCH_IMAGE:-rusty-pinch:pi-local}
+    image: ${RUSTY_PINCH_IMAGE:-ghcr.io/fred-vu/rusty-pinch:latest}
+    platform: linux/arm64
     env_file:
       - ./rusty-pinch.rpi.env
     command: ["channels", "whatsapp"]
     volumes:
-      - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/data:/var/lib/rusty-pinch/data
-      - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/workspace:/var/lib/rusty-pinch/workspace
-      - ${RUSTY_PINCH_HOST_STATE_DIR:-./state}/codex-home:/var/lib/rusty-pinch/codex-home
+      - ./data:/var/lib/rusty-pinch/data
+      - ./workspace:/var/lib/rusty-pinch/workspace
+      - ./skills:/var/lib/rusty-pinch/workspace/skills
+      - ./codex-home:/var/lib/rusty-pinch/codex-home
     healthcheck:
       test: ["CMD", "rusty-pinch", "doctor"]
       interval: 60s
       timeout: 10s
       retries: 3
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "5"
+    restart: unless-stopped
+
+  watchtower:
+    image: containrrr/watchtower:1.7.1
+    command:
+      - --label-enable
+      - --rolling-restart
+      - --cleanup
+      - --interval
+      - ${WATCHTOWER_POLL_INTERVAL_SECS:-300}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
