@@ -150,6 +150,7 @@ Primary variables:
 - `RUSTY_PINCH_TELEMETRY_FILE` (default `${RUSTY_PINCH_DATA_DIR}/telemetry/latest.json`)
 - `RUSTY_PINCH_ENV_FILE` (optional explicit `.env` file path)
 - `RUSTY_PINCH_CODEX_ENABLED`
+- `CODEX_HOME` (container default: `/var/lib/rusty-pinch/codex-home`; keep this on persistent storage)
 - `RUSTY_PINCH_CODEX_CLI_BIN`
 - `RUSTY_PINCH_CODEX_CLI_ARGS` (default `exec --skip-git-repo-check` to support non-git container runtimes)
 - `RUSTY_PINCH_CODEX_PROMPT_FLAG` (default empty/positional prompt)
@@ -326,6 +327,7 @@ docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login s
 For container runtimes, set `RUSTY_PINCH_CODEX_CLI_ARGS=exec --skip-git-repo-check` to avoid Codex git-trust checks on non-repo workdirs.
 If Codex session is lost after worker restart/recreate, run:
 `docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth`.
+Keep `./codex-home` across updates and avoid `docker compose down -v` if you want to preserve Codex login state.
 
 Watchtower auto-update interval defaults to `300s`; override with `WATCHTOWER_POLL_INTERVAL_SECS`.
 

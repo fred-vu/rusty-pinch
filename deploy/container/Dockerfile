@@ -28,6 +28,7 @@ ENV RUSTY_PINCH_DATA_DIR=/var/lib/rusty-pinch/data
 ENV RUSTY_PINCH_WORKSPACE=/var/lib/rusty-pinch/workspace
 ENV RUSTY_PINCH_TELEMETRY_FILE=/var/lib/rusty-pinch/data/telemetry/latest.json
 ENV RUSTY_PINCH_CODEX_HOME=/var/lib/rusty-pinch/codex-home
+ENV CODEX_HOME=/var/lib/rusty-pinch/codex-home
 
 VOLUME ["/var/lib/rusty-pinch/data", "/var/lib/rusty-pinch/workspace", "/var/lib/rusty-pinch/codex-home"]
 ENTRYPOINT ["rusty-pinch-entrypoint"]

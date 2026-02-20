@@ -1145,12 +1145,37 @@ Done:
     - `src/app.rs`
     - `src/prompt.rs`
     - `CONTINUITY.md`
+- Commit + push checkpoint for ledger sync (2026-02-20):
+  - commit: `9e8ae34 docs: sync continuity ledger for prompt push checkpoint`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` updated from `bef7fc6` to `9e8ae34`
+- New user issue report (2026-02-20):
+  - Codex login/session resets after Docker restart/recreate and after git-pull update flow on Raspberry Pi.
+- Implemented Codex auth persistence hardening for container runtimes (2026-02-20):
+  - `deploy/container/Dockerfile`:
+    - added `ENV CODEX_HOME=/var/lib/rusty-pinch/codex-home` so all container processes (including `docker-compose exec`) share persistent Codex state path by default.
+  - `deploy/container/entrypoint.sh`:
+    - normalized/exports `CODEX_HOME` + `RUSTY_PINCH_CODEX_HOME`
+    - added compatibility alias/migration for legacy `~/.codex` path to persistent `CODEX_HOME`
+    - if legacy `~/.codex` dir exists and `CODEX_HOME` is empty, migrates data into persistent mount.
+  - env/docs updates:
+    - `deploy/container/rusty-pinch.env.example`
+    - `deploy/container/rusty-pinch.rpi.env.example`
+    - `deploy/container/README.md`
+    - `docs/runbook-raspberry-pi.md`
+    - `docs/production-healthcheck.md`
+    - `README.md`
+    - document `CODEX_HOME`, persistence expectations for `./codex-home`, and caution against destructive cleanup commands (`down -v`, `git clean -fdx`) when preserving login state.
+- Validation after Codex persistence patch:
+  - `sh -n deploy/container/entrypoint.sh` passed
+- User approval update (2026-02-20):
+  - User requested immediate `commit + push` for Codex auth persistence hardening patch.
 
 Now:
-- System-prompt capability patch is committed and pushed; waiting for user OpenRouter validation on Raspberry Pi.
+- Commit and push Codex auth persistence hardening patch to `feat/foundation-isolated-20260219`.
 
 Next:
-- If user still sees weak behavior, iterate prompt policy (capability formatting + stronger “no hallucination” constraints + optional examples).
+- After push, provide commit hash and Raspberry Pi pull/recreate verification steps.
 
 Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: whether to keep current compact capability inventory format or expand with richer per-skill descriptions/examples.

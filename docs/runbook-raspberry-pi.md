@@ -34,6 +34,7 @@ Edit `rusty-pinch.rpi.env` and set at minimum:
 
 - `RUSTY_PINCH_CHANNELS_TELEGRAM_TOKEN`
 - `RUSTY_PINCH_OPENAI_API_KEY` (if using Codex account auth)
+- `CODEX_HOME=/var/lib/rusty-pinch/codex-home` (keep Codex login state on bind mount)
 
 ## 4. Authenticate to GHCR (if package is private)
 
@@ -71,6 +72,7 @@ docker-compose -f docker-compose.rpi.yml logs -f rusty-pinch-telegram
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch doctor
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex --version
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram /bin/sh -lc 'printf "CODEX_HOME=%s\n" "$CODEX_HOME"'
 ```
 
 If ChatGPT auth is not active:
@@ -157,6 +159,9 @@ sudo journalctl -xeu docker.service --no-pager | tail -n 120
   - `./workspace` -> pulse/evolution workspace state
   - `./skills` -> dynamic Rhai skills (hot-swappable)
   - `./codex-home` -> Codex login/session state
+- Avoid commands that delete persistence paths unless intentional:
+  - `docker-compose down -v`
+  - `git clean -fdx` inside `deploy/container`
 - If `sudo` warns `unable to resolve host ubuntu`, fix `/etc/hosts`:
 
 ```bash
