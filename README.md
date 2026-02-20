@@ -96,6 +96,19 @@ Core commands:
 - `cargo run -- evolution force-unlock --confirm`: force-remove evolution lock file
 - Evolution stage/apply operations hold an exclusive lock at `${RUSTY_PINCH_WORKSPACE}/updates/evolution.lock` to prevent concurrent rollout mutations.
 
+Skill bootstrap behavior:
+
+- Tracked starter skills under `assets/skills/*.rhai` are copied to `${RUSTY_PINCH_WORKSPACE}/skills` on app startup when the destination skill file is missing.
+- Workspace skills are never overwritten by asset sync.
+- Included starter skill: `weather` (`assets/skills/weather.rhai`).
+
+Weather skill args:
+
+- `Hanoi` -> current weather summary
+- `forecast|Hanoi` -> forecast output
+- `rain|Hanoi` -> precipitation-focused line
+- `detail|Hanoi` -> detailed current conditions
+
 Tool commands:
 
 - `cargo run -- tools list`
@@ -266,6 +279,10 @@ GitHub Actions automation:
   - `cargo fmt --check`
   - `cargo build --locked`
   - `cargo test --locked`
+- `.github/workflows/docker-publish.yml` runs on `main` and tag pushes (`v*`):
+  - builds and pushes `linux/arm64` image to GHCR
+  - tags include `latest` (default branch) and version tags (`v*`)
+  - published image includes Codex CLI in runtime
 - `.github/workflows/release.yml` runs on tags matching `v*` (and manual dispatch):
   - release gate (`fmt` + tests)
   - matrix release builds for Linux/macOS/Windows
@@ -290,29 +307,33 @@ Raspberry Pi compose monitor commands:
 
 ```bash
 cd rusty-pinch/deploy/container
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --pid 1 --interval-ms 1000
+docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once
+docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --pid 1 --interval-ms 1000
 ```
 
-Optional Codex CLI build for Pi container (no host Rust install needed):
+Raspberry Pi zero-build startup (pull image from GHCR, no local build):
 
 ```bash
 cd rusty-pinch/deploy/container
-export RUSTY_PINCH_INSTALL_CODEX_CLI=true
-docker-compose -f docker-compose.rpi.yml build rusty-pinch-telegram
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex --version
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
+cp rusty-pinch.rpi.env.example rusty-pinch.rpi.env
+mkdir -p ./data ./workspace ./skills ./codex-home
+docker compose -f docker-compose.rpi.yml pull
+docker compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram watchtower
+docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex --version
+docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
 ```
 
-For container runtimes, set `RUSTY_PINCH_CODEX_CLI_ARGS="exec --skip-git-repo-check"` to avoid Codex git-trust checks on non-repo workdirs.
+For container runtimes, set `RUSTY_PINCH_CODEX_CLI_ARGS=exec --skip-git-repo-check` to avoid Codex git-trust checks on non-repo workdirs.
 If Codex session is lost after worker restart/recreate, run:
-`docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth`.
+`docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth`.
+
+Watchtower auto-update interval defaults to `300s`; override with `WATCHTOWER_POLL_INTERVAL_SECS`.
 
 If turn logs show `Failed to authenticate request with Clerk`, review key envs in
 `rusty-pinch.rpi.env` and recreate the worker:
 
 ```bash
-docker-compose -f docker-compose.rpi.yml up -d --force-recreate rusty-pinch-telegram
+docker compose -f docker-compose.rpi.yml up -d --force-recreate rusty-pinch-telegram
 ```
 
 Artifacts:

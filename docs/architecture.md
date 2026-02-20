@@ -148,12 +148,15 @@ Before promoting this package to mainline runtime role:
   - separate Telegram and WhatsApp worker units
 - container profile:
   - Dockerfile and compose example under `rusty-pinch/deploy/container/`
+  - Raspberry Pi profile consumes prebuilt GHCR image with Watchtower auto-update
   - optional WhatsApp worker via compose profile
 
 ## CI/CD Automation
 
 - `.github/workflows/ci.yml`:
   - gate checks for `fmt`, build, and tests on `main` + PR + manual dispatch.
+- `.github/workflows/docker-publish.yml`:
+  - buildx pipeline publishes `linux/arm64` runtime image to GHCR (`latest` + tag versions).
 - `.github/workflows/release.yml`:
   - tag-triggered (`v*`) release pipeline with Linux/macOS/Windows build matrix.
   - uploads release archives and a consolidated `SHA256SUMS.txt`.

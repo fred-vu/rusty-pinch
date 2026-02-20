@@ -149,8 +149,9 @@ Raspberry Pi compose operations:
 
 ```bash
 cd rusty-pinch/deploy/container
-docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
-docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once
+docker compose -f docker-compose.rpi.yml pull
+docker compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram watchtower
+docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once
 ```
 
 ## 9. Known Risks and Gaps

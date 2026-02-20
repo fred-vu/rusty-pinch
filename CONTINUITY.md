@@ -867,18 +867,187 @@ Done:
   - `cargo check` passed
   - `cargo fmt --all` passed
   - `cargo test` passed (`93` unit tests + integration tests all green)
+- Commit + push checkpoint (2026-02-19):
+  - Commit: `5d0e8de feat(provider): default to codex and route turns through codex runtime`
+  - Branch: `feat/foundation-isolated-20260219`
+  - Push: `origin/feat/foundation-isolated-20260219` updated from `2933f7f` to `5d0e8de`
+  - Working tree after push: clean
+- Raspberry Pi docker-compose build incident triage (2026-02-19):
+  - User hit build failure on Pi:
+    - `PermissionError: [Errno 13] Permission denied: .../deploy/container/state/codex-home`
+  - Root cause:
+    - legacy compose build context scanned host bind-mount state path, including root-owned `codex-home`.
+  - Implemented container build-context hardening:
+    - `deploy/container/docker-compose.rpi.yml`:
+      - `build.context` changed from `../../..` to `../..`
+      - `build.dockerfile` changed from `rusty-pinch/deploy/container/Dockerfile` to `deploy/container/Dockerfile`
+    - `deploy/container/docker-compose.example.yml`:
+      - same context/dockerfile adjustments
+    - `deploy/container/Dockerfile`:
+      - switched COPY paths from monorepo-style `rusty-pinch/...` to repo-root paths
+    - Added root `.dockerignore` to exclude:
+      - `deploy/container/state`
+      - local env files and `target`
+- Added operator workaround docs for existing permission issue:
+  - `deploy/container/README.md` (state ownership fix + rebuild command)
+- Validation after build-context hardening:
+  - `cargo test --quiet` passed (`93` unit tests + integration tests all green)
+- Commit + push checkpoint (2026-02-19):
+  - Commit: `616d3dc fix(container): narrow build context and ignore local state mounts`
+  - Branch: `feat/foundation-isolated-20260219`
+  - Push: `origin/feat/foundation-isolated-20260219` updated with build-context hardening patch.
+- Raspberry Pi Codex runtime args incident triage (2026-02-19):
+  - User reported `codex generate` failure:
+    - `unexpected argument '--skip-git-repo-check\"'`
+  - User-provided env inspection output:
+    - `RUSTY_PINCH_CODEX_CLI_ARGS=<\"exec -- --skip-git-repo-check\">`
+  - Diagnosis:
+    - env value includes literal quote characters plus an extra `--`, producing malformed Codex CLI argv.
+  - Planned operator fix (no code change):
+    - set `RUSTY_PINCH_CODEX_CLI_ARGS=exec --skip-git-repo-check`
+    - keep `RUSTY_PINCH_CODEX_PROMPT_FLAG=` empty
+    - recreate container and re-check `codex --help` / `codex exec --help`.
+- Raspberry Pi Telegram polling conflict incident (2026-02-19):
+  - User ran:
+    - `docker-compose ... exec rusty-pinch-telegram rusty-pinch channels telegram`
+  - Runtime emitted:
+    - Telegram `getUpdates` error `409 Conflict: terminated by other getUpdates request; make sure that only one bot instance is running`
+  - Diagnosis:
+    - two concurrent long-polling consumers are using the same bot token (`getUpdates`) at the same time.
+    - likely cause in this setup: container main process already runs `channels telegram`, then `docker-compose exec ... channels telegram` started a second poller.
+- New task intake (2026-02-19):
+  - User requested:
+    - inspect external repo `https://github.com/openclaw/openclaw`
+    - learn/adapt the `weather` skill
+    - create `weather.rhai` runnable in current Rusty Pinch skill runtime
+  - Pulled reference skill source:
+    - cloned `openclaw/openclaw` with sparse checkout (`skills` only) at `/tmp/openclaw_repo`
+    - reviewed `/tmp/openclaw_repo/skills/weather/SKILL.md`
+  - Reference behavior identified:
+    - weather fetch pattern uses `wttr.in` (no API key) with modes:
+      - one-line summary
+      - forecast
+      - precipitation/rain-oriented output
+- Implemented Rusty Pinch-compatible weather skill:
+  - Created `workspace/skills/weather.rhai` with `main()` and `main(args)` entrypoints.
+  - Adapted for current Rhai runtime semantics:
+    - string `trim()` is in-place (no return value)
+    - `len()` method used for emptiness checks
+  - Supported args contract:
+    - `<location>` -> current weather summary
+    - `forecast|<location>` -> forecast format
+    - `rain|<location>` -> precipitation-focused line
+    - `detail|<location>` -> detailed current conditions
+  - Validation:
+    - `cargo run -- skills dry-run --name weather` passed
+    - `cargo run -- skills list` shows `weather` skill at `./workspace/skills/weather.rhai`
+    - runtime execution from this environment failed due upstream reachability timeout to `https://wttr.in` (curl code `28`), not Rhai compile/runtime API mismatch.
+- Implemented tracked weather skill bootstrap from assets (2026-02-19):
+  - Added tracked starter skill file:
+    - `assets/skills/weather.rhai`
+  - Extended `SkillManager` in `src/skills.rs`:
+    - `sync_from_assets(assets_dir)` copies missing `*.rhai` skills from assets to workspace skill dir
+    - never overwrites existing workspace skill files
+    - added tests:
+      - `skills::tests::sync_from_assets_copies_missing_skills`
+      - `skills::tests::sync_from_assets_does_not_overwrite_existing_workspace_skill`
+  - Wired app startup in `src/app.rs`:
+    - `RustyPinchApp::new` now syncs from `assets/skills` to `${RUSTY_PINCH_WORKSPACE}/skills`
+    - emits startup events:
+      - `skills_assets_synced` (with copied count)
+      - `skills_assets_sync_error` (non-fatal)
+  - Updated docs:
+    - `README.md` documents asset skill bootstrap behavior and weather skill args contract
+  - Validation after asset bootstrap changes:
+    - `cargo fmt --all` passed
+    - `cargo test skills::tests -- --nocapture` passed
+    - `cargo test --test smoke -- --nocapture` passed
+    - smoke logs confirmed startup copy event when workspace is empty.
+- Added skill-folder documentation for operators (2026-02-19):
+  - New file: `assets/skills/README.md`
+  - Includes:
+    - starter skill sync behavior (`assets/skills` -> `${RUSTY_PINCH_WORKSPACE}/skills`)
+    - weather skill args contract
+    - usage via local `cargo` commands
+    - usage via Raspberry Pi `docker-compose ... exec` commands
+    - operational notes for network timeouts and copy-if-missing update behavior
+- Pre-commit validation for weather/bootstrap/docs delta (2026-02-19):
+  - `cargo test` passed (`95` unit tests + integration tests all green)
+- Commit scope decision for requested push (2026-02-19):
+  - include: `src/app.rs`, `src/skills.rs`, `README.md`, `assets/skills/weather.rhai`, `assets/skills/README.md`, `CONTINUITY.md`
+  - exclude (left local, out of scope): `.env.example`, `deploy/container/rusty-pinch.env.example`, `deploy/container/rusty-pinch.rpi.env.example`, `docs/zeroclaw-comparison.md`
+- Commit + push completed for weather/bootstrap/docs delta (2026-02-19):
+  - commit: `43d4d71 feat(skills): bootstrap weather skill from assets`
+  - branch: `feat/foundation-isolated-20260219`
+  - pushed to: `origin/feat/foundation-isolated-20260219`
+- New direction intake (2026-02-20):
+  - user requested to read `docs/zerobuild-local.md` and continue implementation following that approach.
+- Implemented zero-build edge deployment baseline from `docs/zerobuild-local.md` (2026-02-20):
+  - Added GHCR ARM64 publish workflow:
+    - `.github/workflows/docker-publish.yml`
+    - triggers: `main`, `v*` tags, manual dispatch
+    - buildx + qemu + GHCR login via `GITHUB_TOKEN`
+    - publishes `linux/arm64` image tags (`latest`, tag refs, `sha-*`)
+    - image build arg sets `INSTALL_CODEX_CLI=true`
+  - Refactored Raspberry Pi compose profile to consume prebuilt GHCR image (no local build):
+    - `deploy/container/docker-compose.rpi.yml`
+    - removed `build:` directives
+    - default image: `ghcr.io/fred-vu/rusty-pinch:latest`
+    - added explicit bind mounts:
+      - `./data` -> `/var/lib/rusty-pinch/data`
+      - `./workspace` -> `/var/lib/rusty-pinch/workspace`
+      - `./skills` -> `/var/lib/rusty-pinch/workspace/skills`
+      - `./codex-home` -> `/var/lib/rusty-pinch/codex-home`
+    - added `watchtower` service with rolling restart and interval polling
+  - Hardened container image footprint/build determinism:
+    - `deploy/container/Dockerfile` now uses `cargo build --release --locked`
+    - removed unnecessary runtime copies (`docs`, `.env.example`) from final image
+  - Updated runtime/ops docs for zero-build flow:
+    - `deploy/container/README.md`
+    - `docs/runbook-raspberry-pi.md`
+    - `README.md`
+    - `docs/release.md`
+    - `docs/production-healthcheck.md`
+    - `docs/product-specification.md`
+    - `docs/architecture.md`
+  - Updated ignore rules for new Pi bind-mount directories:
+    - `.dockerignore` and `.gitignore`
+  - Updated entrypoint diagnostic log for missing Codex CLI to reference GHCR prebuilt image path.
+- Validation after zero-build baseline patch:
+  - `cargo test` passed (`95` unit tests + integration tests all green)
+  - `sh -n deploy/container/entrypoint.sh` passed
+  - `docker compose ... config` could not run in this workspace (`docker: command not found`)
+- Commit + push checkpoint for zero-build baseline (2026-02-20):
+  - commit: `c0f0015 feat(deploy): adopt zero-build rpi flow with ghcr and watchtower`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` updated from `43d4d71` to `c0f0015`
+- Commit + push checkpoint for ledger sync (2026-02-20):
+  - commit: `5f31626 docs: update continuity ledger after zero-build push`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` updated from `c0f0015` to `5f31626`
+- New user request (2026-02-20):
+  - provide concrete Raspberry Pi instructions to pull branch `feat/foundation-isolated-20260219`.
+- Incident report from Raspberry Pi (2026-02-20):
+  - `docker-compose -f docker-compose.rpi.yml pull` failed on host running `docker-compose==1.25.0` with:
+    - `Unsupported config option ... 'platform'`
+  - Root cause:
+    - compose v1.25 parser does not support `platform` key in this file format.
+  - Fix implemented:
+    - removed `platform: linux/arm64` from both services in `deploy/container/docker-compose.rpi.yml` to restore compatibility with legacy docker-compose v1.
 
 Now:
-- User approved commit/push for codex-provider-default patch.
-- Working tree is ready on branch `feat/foundation-isolated-20260219` with validated changes.
+- Applying compatibility fix for Raspberry Pi `docker-compose` v1 and preparing push instructions.
 
 Next:
-- Commit staged codex-provider-default changes and push branch to `origin`.
+- Commit/push compose compatibility fix and instruct user to pull latest commit then rerun `docker-compose pull`.
 
 Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: zero-touch ChatGPT OAuth in headless containers may still require initial device-auth completion unless auth material is pre-seeded.
 - UNCONFIRMED: whether Raspberry Pi checkout includes commit `97f9172` (Codex install/build-arg + auto-login support).
 - UNCONFIRMED: whether user wants implementation of a new tool to run selected `rusty-pinch` subcommands from Telegram flow.
+- UNCONFIRMED: preferred default location for weather queries when args are empty (currently `London` in skill template).
+- UNCONFIRMED: whether untracked `docs/zeroclaw-comparison.md` should be included in commit scope (currently excluded by default).
+- UNCONFIRMED: whether GHCR package visibility will be public or private in production (impacts Pi `docker login` requirement).
 
 Working set (files/ids/commands):
 - `CONTINUITY.md`
@@ -901,6 +1070,9 @@ Working set (files/ids/commands):
 - `src/monitor.rs`
 - `.github/workflows/ci.yml`
 - `.github/workflows/release.yml`
+- `.github/workflows/docker-publish.yml`
+- `.dockerignore`
+- `.gitignore`
 - `.env.example`
 - `deploy/container/Dockerfile`
 - `deploy/container/README.md`
@@ -909,6 +1081,9 @@ Working set (files/ids/commands):
 - `deploy/container/entrypoint.sh`
 - `deploy/container/rusty-pinch.env.example`
 - `deploy/container/rusty-pinch.rpi.env.example`
+- `docs/release.md`
+- `docs/production-healthcheck.md`
+- `docs/zerobuild-local.md`
 - `tests/pulse_persistence.rs`
 - `tests/observability.rs`
 - `tests/evolution_guard.rs`

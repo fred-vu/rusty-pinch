@@ -1,12 +1,10 @@
 FROM rust:1.91-bookworm AS builder
 WORKDIR /work
 
-COPY rusty-pinch/Cargo.toml rusty-pinch/Cargo.lock ./rusty-pinch/
-COPY rusty-pinch/src ./rusty-pinch/src
-COPY rusty-pinch/assets ./rusty-pinch/assets
-COPY rusty-pinch/docs ./rusty-pinch/docs
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
 
-RUN cargo build --manifest-path rusty-pinch/Cargo.toml --release
+RUN cargo build --release --locked
 
 FROM debian:bookworm-slim
 ARG INSTALL_CODEX_CLI=false
@@ -20,11 +18,9 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/rusty-pinch
-COPY --from=builder /work/rusty-pinch/target/release/rusty-pinch /usr/local/bin/rusty-pinch
-COPY rusty-pinch/deploy/container/entrypoint.sh /usr/local/bin/rusty-pinch-entrypoint
-COPY rusty-pinch/.env.example ./.env.example
-COPY rusty-pinch/docs ./docs
-COPY rusty-pinch/assets ./assets
+COPY --from=builder /work/target/release/rusty-pinch /usr/local/bin/rusty-pinch
+COPY deploy/container/entrypoint.sh /usr/local/bin/rusty-pinch-entrypoint
+COPY assets ./assets
 
 RUN chmod +x /usr/local/bin/rusty-pinch-entrypoint
 
