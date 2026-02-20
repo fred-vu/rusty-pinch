@@ -1170,12 +1170,26 @@ Done:
   - `sh -n deploy/container/entrypoint.sh` passed
 - User approval update (2026-02-20):
   - User requested immediate `commit + push` for Codex auth persistence hardening patch.
+- Commit + push checkpoint for Codex auth persistence hardening patch (2026-02-20):
+  - commit: `9c51d16 fix(container): persist codex auth state across restarts`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` updated with container auth persistence patch
+  - changed files:
+    - `deploy/container/Dockerfile`
+    - `deploy/container/entrypoint.sh`
+    - `deploy/container/rusty-pinch.env.example`
+    - `deploy/container/rusty-pinch.rpi.env.example`
+    - `deploy/container/README.md`
+    - `docs/runbook-raspberry-pi.md`
+    - `docs/production-healthcheck.md`
+    - `README.md`
+    - `CONTINUITY.md`
 
 Now:
-- Commit and push Codex auth persistence hardening patch to `feat/foundation-isolated-20260219`.
+- Codex auth persistence patch is committed/pushed; waiting for Raspberry Pi pull/recreate verification.
 
 Next:
-- After push, provide commit hash and Raspberry Pi pull/recreate verification steps.
+- User pulls latest branch/main on Raspberry Pi, recreates service, and verifies `codex login status` survives restart.
 
 Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: whether to keep current compact capability inventory format or expand with richer per-skill descriptions/examples.
