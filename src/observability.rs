@@ -25,9 +25,9 @@ static PROVIDER_LATENCY_SECONDS_HISTOGRAM: OnceLock<Histogram<f64>> = OnceLock::
 static TOOL_EXECUTIONS_COUNTER: OnceLock<Counter<u64>> = OnceLock::new();
 
 pub struct ObservabilityGuard {
-    _tokio_runtime: Option<Runtime>,
     _tracer_provider: Option<SdkTracerProvider>,
     _meter_provider: Option<SdkMeterProvider>,
+    _tokio_runtime: Option<Runtime>,
 }
 
 impl ObservabilityGuard {
@@ -53,9 +53,9 @@ impl ObservabilityGuard {
                 );
 
                 Self {
-                    _tokio_runtime: Some(pipeline.runtime),
                     _tracer_provider: Some(pipeline.tracer_provider),
                     _meter_provider: Some(pipeline.meter_provider),
+                    _tokio_runtime: Some(pipeline.runtime),
                 }
             }
             Err(err) => {
@@ -69,10 +69,54 @@ impl ObservabilityGuard {
                         .unwrap_or_else(|_| "\"failed to encode observability error\"".to_string())
                 );
                 Self {
-                    _tokio_runtime: None,
                     _tracer_provider: None,
                     _meter_provider: None,
+                    _tokio_runtime: None,
                 }
+            }
+        }
+    }
+}
+
+impl Drop for ObservabilityGuard {
+    fn drop(&mut self) {
+        if let Some(meter_provider) = self._meter_provider.as_ref() {
+            if let Err(err) = meter_provider.force_flush() {
+                eprintln!(
+                    "{{\"event\":\"observability_shutdown\",\"component\":\"metrics\",\"status\":\"flush_error\",\"message\":{}}}",
+                    serde_json::to_string(&err.to_string())
+                        .unwrap_or_else(|_| "\"failed to encode metrics flush error\"".to_string())
+                );
+            }
+            if let Err(err) = meter_provider.shutdown() {
+                eprintln!(
+                    "{{\"event\":\"observability_shutdown\",\"component\":\"metrics\",\"status\":\"shutdown_error\",\"message\":{}}}",
+                    serde_json::to_string(&err.to_string()).unwrap_or_else(|_| {
+                        "\"failed to encode metrics shutdown error\"".to_string()
+                    })
+                );
+            }
+        }
+
+        if let Some(tracer_provider) = self._tracer_provider.as_ref() {
+            let flush_errors = tracer_provider
+                .force_flush()
+                .into_iter()
+                .filter_map(|result| result.err().map(|err| err.to_string()))
+                .collect::<Vec<_>>();
+            if !flush_errors.is_empty() {
+                eprintln!(
+                    "{{\"event\":\"observability_shutdown\",\"component\":\"traces\",\"status\":\"flush_error\",\"message\":{}}}",
+                    serde_json::to_string(&flush_errors.join("; "))
+                        .unwrap_or_else(|_| "\"failed to encode traces flush error\"".to_string())
+                );
+            }
+            if let Err(err) = tracer_provider.shutdown() {
+                eprintln!(
+                    "{{\"event\":\"observability_shutdown\",\"component\":\"traces\",\"status\":\"shutdown_error\",\"message\":{}}}",
+                    serde_json::to_string(&err.to_string())
+                        .unwrap_or_else(|_| "\"failed to encode traces shutdown error\"".to_string())
+                );
             }
         }
     }
