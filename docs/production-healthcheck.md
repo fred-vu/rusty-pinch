@@ -84,7 +84,12 @@ Expected:
 
 4. Codex login lost after container recreate:
 - symptom: `codex login status` shows `Not logged in` and Codex tasks fail.
+- prevention:
+  - keep `CODEX_HOME=/var/lib/rusty-pinch/codex-home`
+  - keep `./codex-home` bind mount data between updates
+  - avoid `docker compose down -v` unless intentionally resetting auth state
 - recovery:
+  - `docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram /bin/sh -lc 'printf "CODEX_HOME=%s\n" "$CODEX_HOME"'`
   - `docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth`
   - `docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status`
 

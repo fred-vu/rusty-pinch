@@ -74,16 +74,24 @@ Published GHCR image is built with Codex CLI included.
 Recommended env settings in `rusty-pinch.rpi.env`:
 
 - `RUSTY_PINCH_CODEX_ENABLED=true`
+- `CODEX_HOME=/var/lib/rusty-pinch/codex-home`
 - `RUSTY_PINCH_CODEX_CLI_BIN=codex`
 - `RUSTY_PINCH_CODEX_CLI_ARGS=exec --skip-git-repo-check`
 - `RUSTY_PINCH_CODEX_PROMPT_FLAG=`
 - `RUSTY_PINCH_CODEX_AUTO_LOGIN=true`
+
+Persistence notes:
+
+- `./codex-home` is the durable Codex auth state mount. Keep this directory across updates.
+- avoid `docker-compose down -v` when you need to keep Codex login state.
+- avoid `git clean -fdx` inside `deploy/container` unless you accept re-login.
 
 Manual login fallback:
 
 ```bash
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram /bin/sh -lc 'printf "CODEX_HOME=%s\n" "$CODEX_HOME"'
 ```
 
 ## Logs and health
