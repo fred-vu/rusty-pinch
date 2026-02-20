@@ -1275,12 +1275,21 @@ Done:
     - `cargo test --quiet` passed (`103` tests + integration suites all green)
 - User request update (2026-02-20):
   - user requested branch rename to today's date before commit/push.
+- Branch rename + publish checkpoint (2026-02-20):
+  - local branch renamed:
+    - from `feat/foundation-isolated-20260219`
+    - to `feat/foundation-isolated-20260220`
+  - commit:
+    - `640e7ae feat(skills): enable agent skill tools and weather ip fallback`
+  - push:
+    - published new remote branch `origin/feat/foundation-isolated-20260220`
+    - upstream tracking configured for renamed branch.
 
 Now:
-- Rename current working branch to a 2026-02-20 date-based name, then commit and push pending patch set.
+- Branch was renamed to date-based name and pending patch set is committed/pushed.
 
 Next:
-- After push, report new branch name and commit hashes for user pull.
+- Wait for user validation on local/Pi using branch `feat/foundation-isolated-20260220`.
 
 Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: preferred execution mode for skill invocation (only explicit user command vs model-autonomous tool loop).
