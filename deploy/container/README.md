@@ -1,5 +1,7 @@
 # Rusty Pinch Container Deployment
 
+Command style in this document uses `docker-compose` for compatibility with Raspberry Pi environments running compose v1.
+
 ## Files
 
 - `Dockerfile`: multi-stage runtime image.
@@ -16,7 +18,7 @@ Use this for workstation development:
 cd rusty-pinch/deploy/container
 cp rusty-pinch.env.example rusty-pinch.env
 # fill API keys / channel tokens
-docker compose -f docker-compose.example.yml up -d rusty-pinch-telegram
+docker-compose -f docker-compose.example.yml up -d rusty-pinch-telegram
 ```
 
 ## Raspberry Pi zero-build profile (recommended)
@@ -30,21 +32,21 @@ cd rusty-pinch/deploy/container
 cp rusty-pinch.rpi.env.example rusty-pinch.rpi.env
 # fill API keys / channel tokens
 mkdir -p ./data ./workspace ./skills ./codex-home
-docker compose -f docker-compose.rpi.yml pull
-docker compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram watchtower
+docker-compose -f docker-compose.rpi.yml pull
+docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram watchtower
 ```
 
 Optional WhatsApp worker:
 
 ```bash
-docker compose -f docker-compose.rpi.yml up -d rusty-pinch-whatsapp
+docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-whatsapp
 ```
 
 Optional image override:
 
 ```bash
 export RUSTY_PINCH_IMAGE=ghcr.io/fred-vu/rusty-pinch:v1.0.0
-docker compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
+docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
 ```
 
 ## Watchtower auto-update
@@ -56,13 +58,13 @@ docker compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram
 
 ```bash
 export WATCHTOWER_POLL_INTERVAL_SECS=900
-docker compose -f docker-compose.rpi.yml up -d watchtower
+docker-compose -f docker-compose.rpi.yml up -d watchtower
 ```
 
 ## GHCR auth (if package is private)
 
 ```bash
-echo "$GITHUB_FINEGRAINED" | docker login ghcr.io -u <github-username> --password-stdin
+printf '%s' "$GHCR_CLASSIC_PAT" | docker login ghcr.io -u fred-vu --password-stdin
 ```
 
 ## Codex runtime notes
@@ -80,16 +82,16 @@ Recommended env settings in `rusty-pinch.rpi.env`:
 Manual login fallback:
 
 ```bash
-docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth
-docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login --device-auth
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
 ```
 
 ## Logs and health
 
 ```bash
-docker compose -f docker-compose.rpi.yml ps
-docker compose -f docker-compose.rpi.yml logs -f rusty-pinch-telegram
-docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch doctor
+docker-compose -f docker-compose.rpi.yml ps
+docker-compose -f docker-compose.rpi.yml logs -f rusty-pinch-telegram
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch doctor
 ```
 
 Expected signals:
@@ -100,5 +102,5 @@ Expected signals:
 ## Monitor
 
 ```bash
-docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once
+docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch monitor --once
 ```

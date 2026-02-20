@@ -1034,12 +1034,82 @@ Done:
     - compose v1.25 parser does not support `platform` key in this file format.
   - Fix implemented:
     - removed `platform: linux/arm64` from both services in `deploy/container/docker-compose.rpi.yml` to restore compatibility with legacy docker-compose v1.
+- Commit + push checkpoint for compose-v1 compatibility fix (2026-02-20):
+  - commit: `4bccef6 fix(container): remove compose platform key for v1 compatibility`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` updated from `5f31626` to `4bccef6`
+- Raspberry Pi verification update (2026-02-20):
+  - User reported current Pi checkout still at `5f31626` (not yet pulled to `4bccef6`).
+  - `docker-compose -f docker-compose.rpi.yml pull` now fails with GHCR auth error:
+    - `Head "https://ghcr.io/v2/fred-vu/rusty-pinch/manifests/latest": denied`
+  - This indicates registry authorization/visibility issue (not compose schema issue).
+- GHCR auth guidance confirmed from GitHub Docs (2026-02-20):
+  - For GHCR package pulls, recommended token type is Personal Access Token (classic) with `read:packages` scope.
+  - Fine-grained PAT used for git push may not satisfy GHCR package auth in this flow.
+  - `Actions` permission is not required for runtime `docker pull` on Pi.
+- Raspberry Pi GHCR login incident (2026-02-20):
+  - User ran:
+    - `echo "$GHCR_CLASSIC_PAT" | docker login ghcr.io -u fred-vu --password-stdin`
+  - Error:
+    - `Error: Cannot perform an interactive login from a non TTY device`
+  - Likely cause:
+    - `GHCR_CLASSIC_PAT` is empty/not exported in current shell (docker falls back to interactive prompt path).
+  - Recovery path:
+    - verify variable length, use `printf` pipe, then retry pull.
+- GHCR manifest incident root-cause confirmation (2026-02-20):
+  - User login to GHCR succeeded, but `docker pull ghcr.io/fred-vu/rusty-pinch:latest` returned `manifest unknown`.
+  - Remote inspection result:
+    - `origin/main` does not contain `.github/workflows/docker-publish.yml`.
+    - `docker-publish.yml` exists only on `origin/feat/foundation-isolated-20260219`.
+  - Conclusion:
+    - zero-build publish pipeline has not run on `main`, so tag `latest` has not been published to GHCR yet.
+- Raspberry Pi runtime incident after publish (2026-02-20):
+  - User confirmed branch was merged to `main` and `Docker Publish` workflow succeeded.
+  - On Pi, image pull started but host crashed during image layer extraction/decompression.
+  - Immediate risk:
+    - host-level instability (likely memory pressure and/or storage I/O bottleneck) during large image unpack.
+  - Next diagnostic requirement:
+    - collect previous boot kernel logs to classify OOM vs mmc/ext4 I/O failure before retrying pull.
+- Raspberry Pi crash diagnostics received (2026-02-20):
+  - Kernel log evidence shows repeated:
+    - `Under-voltage detected! (0x00050005 / 0x00050000)`
+    - `Voltage normalised (0x00000000)` oscillation
+  - No OOM kill signatures present in provided excerpts.
+  - `free -h` shows 1.8 GiB RAM and no swap configured (`Swap: 0B`).
+  - Additional host warning observed:
+    - `sudo: unable to resolve host ubuntu: Name or service not known` (hostname mapping issue in `/etc/hosts`, unrelated to crash root cause).
+  - Working diagnosis:
+    - primary root cause is power instability (undervoltage) during heavy image unpack I/O + CPU load.
+- New incident: Docker daemon startup failure on Pi (2026-02-20):
+  - `docker.service` failed with restart loop and `status=1/FAILURE`.
+  - Service reached `Start request repeated too quickly`.
+  - Likely contributors in this timeline:
+    - invalid/unsupported daemon config (`/etc/docker/daemon.json`) after tuning changes
+    - filesystem instability after prior undervoltage crash.
+- New user request (2026-02-20):
+  - update Raspberry Pi runbook to use `docker-compose` command style (legacy v1 environment).
+- Runbook/doc updates for Raspberry Pi docker-compose operations (2026-02-20):
+  - Rewrote `docs/runbook-raspberry-pi.md`:
+    - standardized `docker-compose` commands
+    - added GHCR auth with `GHCR_CLASSIC_PAT`
+    - added under-voltage mitigation (power, swap, Docker concurrency)
+    - added Docker daemon recovery section for `docker.service` fail-loop
+    - added hostname resolution fix note for `sudo: unable to resolve host ubuntu`
+  - Updated `deploy/container/README.md`:
+    - standardized compose commands to `docker-compose`
+    - fixed GHCR auth example token variable and login command
+    - added command-style note for compose v1 environments
+  - Updated `docs/runbook.md`:
+    - Raspberry Pi quick-start now follows zero-build pull flow and `docker-compose`
+    - expanded failure triage for GHCR auth/manifest and undervoltage crash pattern
+  - Updated `.gitignore`:
+    - removed ignore rule for `docs/runbook-raspberry-pi.md` so runbook can be tracked/pushed.
 
 Now:
-- Applying compatibility fix for Raspberry Pi `docker-compose` v1 and preparing push instructions.
+- Raspberry Pi runbook/doc updates are complete locally; awaiting user review/commit decision.
 
 Next:
-- Commit/push compose compatibility fix and instruct user to pull latest commit then rerun `docker-compose pull`.
+- If approved, commit and push runbook/doc updates.
 
 Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: zero-touch ChatGPT OAuth in headless containers may still require initial device-auth completion unless auth material is pre-seeded.
@@ -1048,6 +1118,12 @@ Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: preferred default location for weather queries when args are empty (currently `London` in skill template).
 - UNCONFIRMED: whether untracked `docs/zeroclaw-comparison.md` should be included in commit scope (currently excluded by default).
 - UNCONFIRMED: whether GHCR package visibility will be public or private in production (impacts Pi `docker login` requirement).
+- UNCONFIRMED: whether current Pi token has package read permission for GHCR (`ghcr.io/fred-vu/rusty-pinch`).
+- UNCONFIRMED: whether `GHCR_CLASSIC_PAT` is currently exported in the same interactive shell where `docker login` is executed.
+- UNCONFIRMED: preferred release channel policy for Pi (`latest` from `main` vs pinned version tags).
+- UNCONFIRMED: crash root cause category on Pi (`OOM` vs `mmc/ext4 I/O` vs thermal/power reset).
+- UNCONFIRMED: exact PSU/cable path currently used on Pi and whether power is supplied via official 5V/3A source.
+- UNCONFIRMED: exact docker daemon error line from `journalctl -u docker.service -n 200`.
 
 Working set (files/ids/commands):
 - `CONTINUITY.md`

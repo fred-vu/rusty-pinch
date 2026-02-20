@@ -10,6 +10,5 @@ deploy/container/data/
 deploy/container/workspace/
 deploy/container/skills/
 deploy/container/codex-home/
-/docs/runbook-raspberry-pi.md
 /docs/zeroclaw-comparison.md
 /docs/zerobuild-local.md
