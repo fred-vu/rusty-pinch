@@ -1104,12 +1104,21 @@ Done:
     - expanded failure triage for GHCR auth/manifest and undervoltage crash pattern
   - Updated `.gitignore`:
     - removed ignore rule for `docs/runbook-raspberry-pi.md` so runbook can be tracked/pushed.
+- Commit + push checkpoint for Raspberry Pi runbook refresh (2026-02-20):
+  - commit: `e3bbc9a docs(runbook): switch Raspberry Pi guide to docker-compose`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` created/updated with runbook docs refresh
+  - changed files:
+    - `.gitignore`
+    - `deploy/container/README.md`
+    - `docs/runbook.md`
+    - `docs/runbook-raspberry-pi.md`
 
 Now:
-- Raspberry Pi runbook/doc updates are complete locally; awaiting user review/commit decision.
+- Raspberry Pi runbook/doc updates are committed and pushed.
 
 Next:
-- If approved, commit and push runbook/doc updates.
+- Wait for user to validate runbook commands on Raspberry Pi and report any mismatches.
 
 Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: zero-touch ChatGPT OAuth in headless containers may still require initial device-auth completion unless auth material is pre-seeded.
