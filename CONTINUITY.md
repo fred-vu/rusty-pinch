@@ -1113,14 +1113,39 @@ Done:
     - `deploy/container/README.md`
     - `docs/runbook.md`
     - `docs/runbook-raspberry-pi.md`
+- New request intake (2026-02-20):
+  - User is testing on Raspberry Pi with `openrouter` provider and reports model responses do not understand system capabilities (tools/skills/runtime context).
+  - Requested improvement: strengthen system prompt/capability context so responses are aligned with available tools/skills.
+- Implemented runtime-aware system prompt enrichment for provider turns (2026-02-20):
+  - `src/app.rs`:
+    - added `runtime_system_identity()` and `runtime_capabilities_prompt()`
+    - capability block now injects:
+      - explicit interaction rules
+      - live tool inventory (name/description/usage from `ToolRegistry`)
+      - live skill inventory (names from `SkillManager`)
+      - skill invocation pathway note (`skills run` API/CLI flow)
+    - provider/codex prompt build path now passes identity + runtime capability context to prompt builder.
+  - `src/prompt.rs`:
+    - extended `PromptBuilder::build(...)` signature with `capabilities`
+    - static cache key now includes capability content to avoid stale cached capability blocks
+    - rendered prompt now has `## Runtime Capabilities` section
+    - added unit tests:
+      - `build_includes_runtime_capabilities_section`
+      - `cache_key_changes_when_capabilities_change`
+- Validation after system prompt capability patch:
+  - `cargo fmt --all` passed
+  - `cargo test --quiet` passed (`97` tests + integration suites all green)
+- User approval update (2026-02-20):
+  - User requested immediate `commit + push` for system-prompt capability patch.
 
 Now:
-- Raspberry Pi runbook/doc updates are committed and pushed.
+- Create commit and push branch with system-prompt capability patch and ledger update.
 
 Next:
-- Wait for user to validate runbook commands on Raspberry Pi and report any mismatches.
+- After push, provide commit hash + pull/retest note for Raspberry Pi openrouter validation.
 
 Open questions (UNCONFIRMED if needed):
+- UNCONFIRMED: whether to keep current compact capability inventory format or expand with richer per-skill descriptions/examples.
 - UNCONFIRMED: zero-touch ChatGPT OAuth in headless containers may still require initial device-auth completion unless auth material is pre-seeded.
 - UNCONFIRMED: whether Raspberry Pi checkout includes commit `97f9172` (Codex install/build-arg + auto-login support).
 - UNCONFIRMED: whether user wants implementation of a new tool to run selected `rusty-pinch` subcommands from Telegram flow.

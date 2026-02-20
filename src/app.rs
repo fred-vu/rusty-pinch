@@ -246,10 +246,13 @@ impl RustyPinchApp {
                 return Err(anyhow!("request_id={}: {}", request_id, message));
             }
         };
+        let identity = self.runtime_system_identity();
+        let capabilities = self.runtime_capabilities_prompt();
         let prompt = self.prompt.build(
             &self.settings.provider,
             &self.settings.model,
-            "You are Rusty Pinch, a pragmatic Rust-first assistant.",
+            &identity,
+            &capabilities,
             session_id,
             user_input,
         );
@@ -1148,6 +1151,59 @@ Return only valid Rhai code (no markdown). Include a main(args) entrypoint and u
         self.codex
             .as_mut()
             .ok_or_else(|| anyhow!("codex integration is disabled"))
+    }
+
+    fn runtime_system_identity(&self) -> String {
+        "You are Rusty Pinch, a pragmatic Rust-first assistant running inside a constrained runtime. \
+Stay grounded to the declared capabilities. If a capability is not listed, explicitly say it is unavailable."
+            .to_string()
+    }
+
+    fn runtime_capabilities_prompt(&self) -> String {
+        let tools = self.tools.list();
+        let tool_lines = if tools.is_empty() {
+            "- none".to_string()
+        } else {
+            tools
+                .into_iter()
+                .map(|tool| {
+                    format!(
+                        "- {}: {} (usage: {})",
+                        tool.name.trim(),
+                        tool.description.trim(),
+                        tool.usage.trim()
+                    )
+                })
+                .collect::<Vec<String>>()
+                .join("\n")
+        };
+
+        let skills_lines = match self.skills.list_skills() {
+            Ok(skills) if skills.is_empty() => "- none".to_string(),
+            Ok(skills) => skills
+                .into_iter()
+                .map(|skill| format!("- {}", skill.name.trim()))
+                .collect::<Vec<String>>()
+                .join("\n"),
+            Err(err) => format!("- unavailable ({})", err),
+        };
+
+        format!(
+            "Interaction rules:
+- For tool execution in message flow, use `/tool <name> [args]`.
+- Do not invent tools or skills not listed below.
+- If asked to perform unavailable actions, explain the limitation and propose the closest available tool.
+
+Available tools:
+{}
+
+Installed skills:
+{}
+
+Skill invocation note:
+- Skills are managed by runtime skill APIs/CLI (`rusty-pinch skills run --name <skill> --args ...`) and are not automatically executed unless an explicit runtime pathway is invoked.",
+            tool_lines, skills_lines
+        )
     }
 
     fn persist_pulse_state(&mut self) -> Result<()> {
