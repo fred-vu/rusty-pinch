@@ -9,7 +9,12 @@ services:
         INSTALL_CODEX_CLI: ${RUSTY_PINCH_INSTALL_CODEX_CLI:-false}
     env_file:
       - ./rusty-pinch.env
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4317}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-rusty-pinch}
     command: ["channels", "telegram"]
+    depends_on:
+      - alloy
     volumes:
       - rusty_pinch_data:/var/lib/rusty-pinch/data
       - rusty_pinch_workspace:/var/lib/rusty-pinch/workspace
@@ -24,14 +29,33 @@ services:
         INSTALL_CODEX_CLI: ${RUSTY_PINCH_INSTALL_CODEX_CLI:-false}
     env_file:
       - ./rusty-pinch.env
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4317}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-rusty-pinch}
     command: ["channels", "whatsapp"]
+    depends_on:
+      - alloy
     volumes:
       - rusty_pinch_data:/var/lib/rusty-pinch/data
       - rusty_pinch_workspace:/var/lib/rusty-pinch/workspace
       - rusty_pinch_codex_home:/var/lib/rusty-pinch/codex-home
     restart: unless-stopped
 
+  alloy:
+    image: grafana/alloy:latest
+    env_file:
+      - ./rusty-pinch.env
+    command:
+      - run
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ../config/config.alloy:/etc/alloy/config.alloy:ro
+      - rusty_pinch_alloy_data:/var/lib/alloy/data
+    restart: unless-stopped
+
 volumes:
   rusty_pinch_data:
   rusty_pinch_workspace:
   rusty_pinch_codex_home:
+  rusty_pinch_alloy_data:

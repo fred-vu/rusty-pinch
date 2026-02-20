@@ -9,6 +9,7 @@ Command style in this document uses `docker-compose` for compatibility with Rasp
 - `docker-compose.rpi.yml`: Raspberry Pi zero-build profile (pull from GHCR).
 - `rusty-pinch.env.example`: local compose env template.
 - `rusty-pinch.rpi.env.example`: Raspberry Pi env template.
+- `../config/config.alloy`: Grafana Alloy OTLP receiver/exporter config.
 
 ## Local build profile
 
@@ -21,6 +22,12 @@ cp rusty-pinch.env.example rusty-pinch.env
 docker-compose -f docker-compose.example.yml up -d rusty-pinch-telegram
 ```
 
+Optional observability stack (Alloy + worker):
+
+```bash
+docker-compose -f docker-compose.example.yml up -d alloy rusty-pinch-telegram
+```
+
 ## Raspberry Pi zero-build profile (recommended)
 
 Target: Raspberry Pi 64-bit (`linux/arm64`).
@@ -31,10 +38,16 @@ This profile does not run `docker build` on Pi. It pulls prebuilt images from GH
 cd rusty-pinch/deploy/container
 cp rusty-pinch.rpi.env.example rusty-pinch.rpi.env
 # fill API keys / channel tokens
-mkdir -p ./data ./workspace ./skills ./codex-home
+mkdir -p ./data ./workspace ./skills ./codex-home ./alloy-data
 docker-compose -f docker-compose.rpi.yml pull
-docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram watchtower
+docker-compose -f docker-compose.rpi.yml up -d alloy rusty-pinch-telegram watchtower
 ```
+
+For Grafana Cloud forwarding, set these in `rusty-pinch.rpi.env`:
+
+- `GRAFANA_CLOUD_OTLP_ENDPOINT`
+- `GRAFANA_CLOUD_USER`
+- `GRAFANA_CLOUD_TOKEN`
 
 Optional WhatsApp worker:
 
@@ -99,6 +112,7 @@ docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram /bin/sh -lc '
 ```bash
 docker-compose -f docker-compose.rpi.yml ps
 docker-compose -f docker-compose.rpi.yml logs -f rusty-pinch-telegram
+docker-compose -f docker-compose.rpi.yml logs -f alloy
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch doctor
 ```
 

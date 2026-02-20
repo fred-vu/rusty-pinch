@@ -27,7 +27,7 @@ git rev-parse --short HEAD
 ```bash
 cd ~/rusty-pinch/deploy/container
 cp rusty-pinch.rpi.env.example rusty-pinch.rpi.env
-mkdir -p ./data ./workspace ./skills ./codex-home
+mkdir -p ./data ./workspace ./skills ./codex-home ./alloy-data
 ```
 
 Edit `rusty-pinch.rpi.env` and set at minimum:
@@ -35,6 +35,10 @@ Edit `rusty-pinch.rpi.env` and set at minimum:
 - `RUSTY_PINCH_CHANNELS_TELEGRAM_TOKEN`
 - `RUSTY_PINCH_OPENAI_API_KEY` (if using Codex account auth)
 - `CODEX_HOME=/var/lib/rusty-pinch/codex-home` (keep Codex login state on bind mount)
+- `OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317`
+- `GRAFANA_CLOUD_OTLP_ENDPOINT`
+- `GRAFANA_CLOUD_USER`
+- `GRAFANA_CLOUD_TOKEN`
 
 ## 4. Authenticate to GHCR (if package is private)
 
@@ -55,7 +59,7 @@ docker pull ghcr.io/fred-vu/rusty-pinch:latest
 ```bash
 cd ~/rusty-pinch/deploy/container
 docker-compose -f docker-compose.rpi.yml pull
-docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram watchtower
+docker-compose -f docker-compose.rpi.yml up -d alloy rusty-pinch-telegram watchtower
 ```
 
 Optional WhatsApp worker:
@@ -69,6 +73,7 @@ docker-compose -f docker-compose.rpi.yml up -d rusty-pinch-whatsapp
 ```bash
 docker-compose -f docker-compose.rpi.yml ps
 docker-compose -f docker-compose.rpi.yml logs -f rusty-pinch-telegram
+docker-compose -f docker-compose.rpi.yml logs -f alloy
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram rusty-pinch doctor
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex --version
 docker-compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
@@ -167,3 +172,22 @@ sudo journalctl -xeu docker.service --no-pager | tail -n 120
 ```bash
 echo "127.0.1.1 ubuntu" | sudo tee -a /etc/hosts
 ```
+
+## 12. Grafana Cloud dashboards and alert baseline
+
+Create these dashboard panels from OTLP metrics:
+
+- Provider latency by provider (P50/P90/P99):
+  - `histogram_quantile(0.50, sum by (le, provider) (rate(provider_latency_seconds_bucket[5m])))`
+  - `histogram_quantile(0.90, sum by (le, provider) (rate(provider_latency_seconds_bucket[5m])))`
+  - `histogram_quantile(0.99, sum by (le, provider) (rate(provider_latency_seconds_bucket[5m])))`
+- Tool execution frequency:
+  - `sum by (tool_name, source) (rate(tool_executions_total[5m]))`
+- Provider error ratio:
+  - `sum(rate(provider_latency_seconds_count{status="error"}[5m])) / clamp_min(sum(rate(provider_latency_seconds_count[5m])), 1)`
+
+Recommended alert rule:
+
+- Name: `rusty-pinch-provider-error-rate`
+- Condition: provider error ratio `> 0.10` for `5m`
+- Notification: route to Telegram contact point (new bot/token dedicated for alerts).

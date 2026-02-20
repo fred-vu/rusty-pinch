@@ -15,6 +15,7 @@ Rusty Pinch is a clean, standalone Rust runtime package for the assistant stack.
 - Deterministic local tool path (`/tool ...`) with safety guardrails
 - Native channel listeners: Telegram long polling and WhatsApp bridge websocket
 - Structured per-turn logs with `request_id`
+- OpenTelemetry traces/metrics export (OTLP) for Grafana Alloy/Grafana Cloud
 - Persisted telemetry counters across CLI restarts
 - Standalone packaging script and CI artifacts
 
@@ -154,6 +155,9 @@ Primary variables:
 - `RUSTY_PINCH_TELEMETRY_FILE` (default `${RUSTY_PINCH_DATA_DIR}/telemetry/latest.json`)
 - `RUSTY_PINCH_SKILL_HTTP_TIMEOUT_SECS` (default `20`; timeout for skill `http_get`/`http_post`)
 - `RUSTY_PINCH_ENV_FILE` (optional explicit `.env` file path)
+- `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://localhost:4317`)
+- `OTEL_SERVICE_NAME` (default `rusty-pinch`)
+- `OTEL_METRIC_EXPORT_INTERVAL_SECS` (default `15`)
 - `RUSTY_PINCH_CODEX_ENABLED`
 - `CODEX_HOME` (container default: `/var/lib/rusty-pinch/codex-home`; keep this on persistent storage)
 - `RUSTY_PINCH_CODEX_CLI_BIN`
@@ -197,6 +201,9 @@ Primary variables:
 - `RUSTY_PINCH_CHANNELS_WHATSAPP_ENABLED`
 - `RUSTY_PINCH_CHANNELS_WHATSAPP_BRIDGE_URL`
 - `RUSTY_PINCH_CHANNELS_WHATSAPP_ALLOW_FROM`
+- `GRAFANA_CLOUD_OTLP_ENDPOINT` (used by `deploy/config/config.alloy`)
+- `GRAFANA_CLOUD_USER` (Grafana Cloud stack user id)
+- `GRAFANA_CLOUD_TOKEN` (Grafana Cloud API token)
 
 Common key/base overrides:
 
@@ -254,6 +261,10 @@ Shutdown behavior:
 - `request_id`, `session_id`, `path`, `status`
 - `attempts`, `latency_ms` (provider path)
 - `tool_name` (tool path)
+- OpenTelemetry producer path:
+- tracing spans include `request_id`/`session_id` on provider + tool execution spans
+- metrics include `tokens_used` counter, `provider_latency_seconds` histogram, and `tool_executions_total` counter
+- OTLP exporter defaults to `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` and degrades gracefully if endpoint is unavailable
 - `stats` returns persisted telemetry:
 - `total_turns`, `ok_turns`, `error_turns`, `provider_turns`, `tool_turns`
 - `last_turn` persists across process restarts
@@ -323,8 +334,9 @@ Raspberry Pi zero-build startup (pull image from GHCR, no local build):
 cd rusty-pinch/deploy/container
 cp rusty-pinch.rpi.env.example rusty-pinch.rpi.env
 mkdir -p ./data ./workspace ./skills ./codex-home
+mkdir -p ./alloy-data
 docker compose -f docker-compose.rpi.yml pull
-docker compose -f docker-compose.rpi.yml up -d rusty-pinch-telegram watchtower
+docker compose -f docker-compose.rpi.yml up -d alloy rusty-pinch-telegram watchtower
 docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex --version
 docker compose -f docker-compose.rpi.yml exec rusty-pinch-telegram codex login status
 ```

@@ -9,6 +9,7 @@ use rusty_pinch::app::RustyPinchApp;
 use rusty_pinch::channels;
 use rusty_pinch::config::Settings;
 use rusty_pinch::monitor::{self, MonitorOptions};
+use rusty_pinch::observability::ObservabilityGuard;
 
 #[derive(Parser, Debug)]
 #[command(name = "rusty-pinch")]
@@ -325,6 +326,7 @@ enum EvolutionCommands {
 }
 
 fn main() -> Result<()> {
+    let _observability = ObservabilityGuard::init();
     let cli = Cli::parse();
     let settings = Settings::load()?;
     let channel_settings = settings.clone();
