@@ -1137,12 +1137,20 @@ Done:
   - `cargo test --quiet` passed (`97` tests + integration suites all green)
 - User approval update (2026-02-20):
   - User requested immediate `commit + push` for system-prompt capability patch.
+- Commit + push checkpoint for system-prompt capability patch (2026-02-20):
+  - commit: `bef7fc6 feat(prompt): enrich runtime capability system prompt`
+  - branch: `feat/foundation-isolated-20260219`
+  - push: `origin/feat/foundation-isolated-20260219` updated from `860356a` to `bef7fc6`
+  - changed files:
+    - `src/app.rs`
+    - `src/prompt.rs`
+    - `CONTINUITY.md`
 
 Now:
-- Create commit and push branch with system-prompt capability patch and ledger update.
+- System-prompt capability patch is committed and pushed; waiting for user OpenRouter validation on Raspberry Pi.
 
 Next:
-- After push, provide commit hash + pull/retest note for Raspberry Pi openrouter validation.
+- If user still sees weak behavior, iterate prompt policy (capability formatting + stronger “no hallucination” constraints + optional examples).
 
 Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: whether to keep current compact capability inventory format or expand with richer per-skill descriptions/examples.
