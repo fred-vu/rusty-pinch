@@ -1408,12 +1408,43 @@ Done:
   - validation:
     - `cargo check --locked` passed
     - `cargo test --locked` passed (all tests green)
+- Grafana env-name hotfix published (2026-02-20):
+  - commit:
+    - `76c495a fix(observability): align grafana otlp env mapping for alloy`
+  - push:
+    - updated `origin/feat/foundation-isolated-20260220` with compatibility patch.
+  - reference docs consulted:
+    - Grafana Cloud OTLP send-data guide (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`)
+    - Grafana Alloy `otelcol.auth.headers` + `otelcol.exporter.otlphttp` component docs.
+- User runtime error report (2026-02-20):
+  - on Raspberry Pi, `alloy` container fails to load config:
+    - `/etc/alloy/config.alloy` parser errors: `missing ',' in expression list`
+    - failing lines include complex nested expression in `otelcol.auth.headers` and `coalesce(...)` endpoint expression.
+  - required action: simplify `config.alloy` to Alloy-compatible syntax and republish hotfix.
+- Alloy parser hotfix (2026-02-20):
+  - root cause:
+    - `deploy/config/config.alloy` used nested header-parsing expressions that Alloy parser rejected at runtime.
+  - fix applied:
+    - replaced `otelcol.auth.headers` + nested expressions with minimal `otelcol.auth.basic`.
+    - exporter endpoint now directly uses `OTEL_EXPORTER_OTLP_ENDPOINT`.
+    - basic auth now uses:
+      - `GRAFANA_CLOUD_ACCOUNT_ID`
+      - `GRAFANA_CLOUD_API_TOKEN`
+    - updated docs/templates accordingly:
+      - `deploy/container/rusty-pinch.rpi.env.example`
+      - `deploy/container/rusty-pinch.env.example`
+      - `deploy/container/README.md`
+      - `docs/runbook-raspberry-pi.md`
+      - `README.md`
+  - validation:
+    - `cargo check --locked` passed
+    - `cargo test --locked` passed (all tests green)
 
 Now:
-- Env-name compatibility fix is implemented and validated locally.
+- Alloy syntax hotfix is implemented and ready to publish.
 
 Next:
-- Commit and push Grafana env-name hotfix so Pi zero-build deploy can pull updated config.
+- Commit/push parser hotfix and provide forced-recreate commands for Pi.
 
 Open questions (UNCONFIRMED if needed):
 - UNCONFIRMED: preferred execution mode for skill invocation (only explicit user command vs model-autonomous tool loop).

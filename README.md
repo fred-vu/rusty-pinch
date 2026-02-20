@@ -157,7 +157,6 @@ Primary variables:
 - `RUSTY_PINCH_ENV_FILE` (optional explicit `.env` file path)
 - `RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT` (optional worker-side OTLP endpoint override)
 - `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://localhost:4317`)
-- `OTEL_EXPORTER_OTLP_HEADERS` (Grafana Cloud auth header string, for example `Authorization=Basic ...`)
 - `OTEL_SERVICE_NAME` (default `rusty-pinch`)
 - `OTEL_METRIC_EXPORT_INTERVAL_SECS` (default `15`)
 - `RUSTY_PINCH_CODEX_ENABLED`
@@ -203,8 +202,8 @@ Primary variables:
 - `RUSTY_PINCH_CHANNELS_WHATSAPP_ENABLED`
 - `RUSTY_PINCH_CHANNELS_WHATSAPP_BRIDGE_URL`
 - `RUSTY_PINCH_CHANNELS_WHATSAPP_ALLOW_FROM`
-- `GRAFANA_CLOUD_OTLP_ENDPOINT` (optional endpoint alias consumed by Alloy exporter)
-- `GRAFANA_CLOUD_OTLP_AUTHORIZATION` (optional explicit Authorization header value consumed by Alloy exporter)
+- `GRAFANA_CLOUD_ACCOUNT_ID` (Grafana Cloud OTLP account id for Alloy basic auth)
+- `GRAFANA_CLOUD_API_TOKEN` (Grafana Cloud API token for Alloy basic auth)
 
 Common key/base overrides:
 

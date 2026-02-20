@@ -37,7 +37,8 @@ Edit `rusty-pinch.rpi.env` and set at minimum:
 - `CODEX_HOME=/var/lib/rusty-pinch/codex-home` (keep Codex login state on bind mount)
 - `RUSTY_PINCH_OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317` (worker -> alloy)
 - `OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-<region>.grafana.net/otlp` (alloy -> Grafana Cloud)
-- `OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <base64(account_id:api_token)>`
+- `GRAFANA_CLOUD_ACCOUNT_ID=<stack_account_id>`
+- `GRAFANA_CLOUD_API_TOKEN=<cloud_api_token>`
 
 ## 4. Authenticate to GHCR (if package is private)
 
