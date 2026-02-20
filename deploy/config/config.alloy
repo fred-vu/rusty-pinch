@@ -125,7 +125,7 @@ otelcol.processor.batch "default" {
 
 otelcol.exporter.otlphttp "grafana_cloud" {
   client {
-    endpoint = sys.env("OTEL_EXPORTER_OTLP_ENDPOINT")
+    endpoint = sys.env("GRAFANA_CLOUD_OTLP_ENDPOINT")
     auth     = otelcol.auth.basic.grafana_cloud.handler
   }
 }
